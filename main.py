@@ -23,7 +23,7 @@ logger = logging.getLogger("REN-Gateway")
 app = FastAPI(title="REN", docs_url=None, redoc_url=None)
 
 CONFIG = {
-    "port": int(os.environ.get("PORT", 8000)),
+    "port": int(os.environ.get("PORT", 8080)),
     "secret": os.environ.get("SECRET_KEY", "ren-default-secret-key"),
 }
 
