@@ -435,35 +435,849 @@ async def get_subscription(uid: str, _=Depends(require_auth)):
     }
 
 
+# ============================================================
+# 📄 صفحه سابسکریپشن HTML (برای مرورگر)
+# ============================================================
 @app.get("/sub/{uid}")
-async def subscription_endpoint(uid: str):
+async def subscription_page(uid: str):
     import base64
+    
+    # 1. پیدا کردن لینک
     async with LINKS_LOCK:
         link = LINKS.get(uid)
         if link is None:
-            raise HTTPException(status_code=404, detail="link not found")
+            raise HTTPException(status_code=404, detail="Link not found")
+    
+    # 2. چک کردن فعال بودن
     if not link["active"]:
-        raise HTTPException(status_code=403, detail="link disabled")
+        raise HTTPException(status_code=403, detail="Link disabled")
+    
+    # 3. چک کردن انقضا
     if is_expired(link):
-        raise HTTPException(status_code=403, detail="link expired")
+        raise HTTPException(status_code=403, detail="Link expired")
+    
+    # 4. گرفتن آدرس‌های تمیز
     async with CUSTOM_ADDRESSES_LOCK:
         addresses = list(CUSTOM_ADDRESSES)
+    
+    # 5. ساخت لیست کانفیگ‌ها
     sub_links = []
-    server_link = generate_vless_link(uid, remark=f"VROOM-{link['label']}-Server")
+    
+    # لینک سرور اصلی
+    server_link = generate_vless_link(uid, remark=f"VROOM-{link['label']}")
     sub_links.append(server_link)
+    
+    # لینک‌های آی‌پی تمیز
     for i, addr in enumerate(addresses):
-        remark = f"VROOM-{link['label']}-IP{i+1}"
+        remark = f"VROOM-{link['label']}-{i+1}"
         vless_link = generate_vless_link(uid, remark=remark, address=addr)
         sub_links.append(vless_link)
+    
+    # 6. تبدیل به Base64 برای QR Code
+    config_base64 = base64.b64encode(server_link.encode()).decode()
     sub_content = "\n".join(sub_links)
-    encoded = base64.b64encode(sub_content.encode()).decode()
-    headers = {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Content-Disposition": "attachment; filename=\"sub.txt\"",
-        "profile-update-interval": "6",
-        "subscription-userinfo": f"upload={link['used_bytes']}; download=0; total={link['limit_bytes']}; expire={expiry_epoch(link)}"
-    }
-    return Response(content=encoded, headers=headers)
+    sub_base64 = base64.b64encode(sub_content.encode()).decode()
+    
+    # 7. محاسبات برای نمایش
+    used_gb = round(link['used_bytes'] / (1024 * 1024 * 1024), 2)
+    limit_gb = round(link['limit_bytes'] / (1024 * 1024 * 1024), 2) if link['limit_bytes'] > 0 else 0
+    percent = round((link['used_bytes'] / link['limit_bytes']) * 100, 1) if link['limit_bytes'] > 0 else 0
+    
+    # وضعیت
+    if is_expired(link):
+        status = "expired"
+        status_text = "منقضی شده"
+    elif link['limit_bytes'] > 0 and link['used_bytes'] >= link['limit_bytes']:
+        status = "limited"
+        status_text = "محدود شده"
+    else:
+        status = "active"
+        status_text = "فعال"
+    
+    # روزهای باقی‌مونده
+    exp = link.get("expiry")
+    if exp:
+        try:
+            exp_date = datetime.fromisoformat(exp)
+            days_left = (exp_date - datetime.now()).days
+            if days_left < 0:
+                days_left = 0
+            days_left_text = f"{days_left} روز"
+        except:
+            days_left_text = "نامحدود"
+    else:
+        days_left_text = "نامحدود"
+    
+    # ============================================================
+    # صفحه HTML سابسکریپشن
+    # ============================================================
+    html = f"""<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 ایستگاه فضایی مارزبان</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+
+        body {{
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: radial-gradient(ellipse at bottom, #0d1b2a 0%, #000000 100%);
+            overflow: hidden;
+            color: #fff;
+            direction: rtl;
+            padding: 20px;
+            position: relative;
+        }}
+
+        .theme-selector {{
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            padding: 10px 15px;
+            border-radius: 50px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }}
+        .theme-btn {{
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }}
+        .theme-btn:hover {{
+            transform: scale(1.2);
+            border-color: #fff;
+        }}
+        .theme-btn.active {{
+            border-color: #ffd700;
+            box-shadow: 0 0 15px rgba(255,215,0,0.5);
+        }}
+        .theme-btn.space {{ background: radial-gradient(ellipse at bottom, #0d1b2a 0%, #000000 100%); }}
+        .theme-btn.ocean {{ background: linear-gradient(135deg, #1a2980, #26d0ce); }}
+        .theme-btn.sunset {{ background: linear-gradient(135deg, #f12711, #f5af19); }}
+        .theme-btn.forest {{ background: linear-gradient(135deg, #134e5e, #71b280); }}
+        .theme-btn.neon {{ background: linear-gradient(135deg, #1d1d2e, #ff00cc); }}
+
+        .loader-wrapper {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.8s ease, visibility 0.8s ease;
+        }}
+        .loader-wrapper.hide {{
+            opacity: 0;
+            visibility: hidden;
+        }}
+        @keyframes spin-loader {{
+            0% {{ transform: rotate(0deg); }}
+            100% {{ transform: rotate(360deg); }}
+        }}
+        .loader {{
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #ffd700;
+            border-radius: 50%;
+            animation: spin-loader 1s linear infinite;
+        }}
+        .loader-text {{
+            margin-top: 20px;
+            color: #ffd700;
+            font-size: 0.9rem;
+            letter-spacing: 2px;
+            text-align: center;
+        }}
+
+        .stars-layer {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }}
+        @keyframes twinkle {{
+            0%,100% {{ opacity: 0.2; transform: scale(0.8); }}
+            50% {{ opacity: 1; transform: scale(1.3); }}
+        }}
+        .star {{
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle var(--duration) ease-in-out infinite;
+            animation-delay: var(--delay);
+        }}
+
+        @keyframes shoot {{
+            0% {{ transform: translate(0, 0) rotate(-45deg); opacity: 1; }}
+            70% {{ opacity: 1; }}
+            100% {{ transform: translate(-600px, 600px) rotate(-45deg); opacity: 0; }}
+        }}
+        .shooting-star {{
+            position: fixed;
+            width: 3px;
+            height: 3px;
+            background: #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 10px 3px rgba(255, 255, 255, 0.5);
+            animation: shoot 4s linear infinite;
+            z-index: 0;
+            pointer-events: none;
+        }}
+        .shooting-star::after {{
+            content: '';
+            position: absolute;
+            top: 50%;
+            right: 0;
+            width: 100px;
+            height: 1px;
+            background: linear-gradient(to left, rgba(255, 255, 255, 0.6), transparent);
+            transform: translateY(-50%);
+        }}
+        .shooting-star:nth-child(1) {{ top: 10%; left: 70%; animation-delay: 0s; }}
+        .shooting-star:nth-child(2) {{ top: 30%; left: 50%; animation-delay: 2.5s; }}
+        .shooting-star:nth-child(3) {{ top: 60%; left: 80%; animation-delay: 5s; }}
+
+        .space-scene {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }}
+
+        @keyframes spin {{
+            0% {{ transform: rotate(0deg); }}
+            100% {{ transform: rotate(360deg); }}
+        }}
+        @keyframes orbit-spin {{
+            0% {{ transform: rotate(0deg); }}
+            100% {{ transform: rotate(360deg); }}
+        }}
+        @keyframes float {{
+            0%,100% {{ transform: translateY(0px) scale(1); }}
+            50% {{ transform: translateY(-18px) scale(1.02); }}
+        }}
+        @keyframes pulse {{
+            0%,100% {{ box-shadow: 0 0 80px rgba(75, 158, 218, 0.3), inset -30px -30px 60px rgba(0,0,0,0.7); }}
+            50% {{ box-shadow: 0 0 120px rgba(75, 158, 218, 0.5), inset -35px -35px 70px rgba(0,0,0,0.8); }}
+        }}
+
+        .earth-wrapper {{
+            position: relative;
+            animation: float 5s ease-in-out infinite;
+        }}
+        .earth {{
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            position: relative;
+            animation: spin 20s linear infinite, pulse 4s ease-in-out infinite;
+            box-shadow: 0 0 80px rgba(75, 158, 218, 0.3), inset -30px -30px 60px rgba(0, 0, 0, 0.7);
+            overflow: hidden;
+        }}
+        .earth-layer {{
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+        }}
+        .earth-base {{ background: radial-gradient(circle at 30% 30%, #4facfe, #1a4b7a 60%, #0a1a2a 95%); }}
+        .earth-continents {{
+            background:
+                radial-gradient(ellipse at 70% 40%, #2d8a4e 15%, transparent 25%),
+                radial-gradient(ellipse at 30% 60%, #2d8a4e 20%, transparent 30%),
+                radial-gradient(ellipse at 50% 75%, #2d8a4e 10%, transparent 20%),
+                radial-gradient(ellipse at 80% 70%, #2d8a4e 12%, transparent 22%),
+                radial-gradient(ellipse at 15% 25%, #2d8a4e 8%, transparent 18%),
+                radial-gradient(ellipse at 55% 30%, #3a9d5e 18%, transparent 28%);
+            opacity: 0.8;
+        }}
+        .earth-clouds {{
+            background:
+                radial-gradient(ellipse at 20% 30%, rgba(255,255,255,0.3) 10%, transparent 25%),
+                radial-gradient(ellipse at 70% 60%, rgba(255,255,255,0.25) 15%, transparent 30%),
+                radial-gradient(ellipse at 40% 80%, rgba(255,255,255,0.2) 12%, transparent 22%),
+                radial-gradient(ellipse at 85% 20%, rgba(255,255,255,0.2) 8%, transparent 20%),
+                radial-gradient(ellipse at 10% 70%, rgba(255,255,255,0.15) 10%, transparent 20%);
+            animation: spin 40s linear infinite reverse;
+            opacity: 0.5;
+        }}
+        .earth-shine {{ background: radial-gradient(circle at 25% 25%, rgba(255,255,255,0.3) 0%, transparent 50%); }}
+
+        .orbit {{
+            position: absolute;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 50%;
+            animation: orbit-spin var(--orbit-duration) linear infinite;
+        }}
+        .orbit-1 {{ width: 380px; height: 380px; --orbit-duration: 20s; }}
+        .orbit-2 {{ width: 520px; height: 520px; --orbit-duration: 35s; border-color: rgba(255, 215, 0, 0.08); }}
+        .orbit-3 {{ width: 660px; height: 660px; --orbit-duration: 50s; border-color: rgba(0, 255, 200, 0.06); }}
+
+        .satellite {{
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            box-shadow: 0 0 30px currentColor;
+        }}
+        .satellite-1 {{ top: 5%; left: 80%; background: #ffd700; color: #ffd700; }}
+        .satellite-2 {{ top: 80%; left: 10%; background: #ff6b6b; color: #ff6b6b; animation-delay: -10s; }}
+        .satellite-3 {{ top: 20%; left: 5%; background: #4ecdc4; color: #4ecdc4; animation-delay: -20s; }}
+
+        .rocket {{
+            position: fixed;
+            z-index: 2;
+            font-size: 30px;
+            animation: rocket-fly 8s linear infinite;
+            filter: drop-shadow(0 0 20px rgba(255, 100, 0, 0.6));
+            pointer-events: none;
+        }}
+        .rocket:nth-child(2) {{
+            animation-delay: 4s;
+            font-size: 22px;
+            filter: drop-shadow(0 0 15px rgba(0, 200, 255, 0.6));
+        }}
+        @keyframes rocket-fly {{
+            0% {{ transform: translate(-100px, 100px) rotate(-45deg) scale(0.5); opacity: 0; }}
+            20% {{ opacity: 1; }}
+            80% {{ opacity: 1; }}
+            100% {{ transform: translate(100vw, -100vh) rotate(-45deg) scale(1.5); opacity: 0; }}
+        }}
+
+        .card {{
+            position: relative;
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(20px);
+            border-radius: 32px;
+            padding: 40px 45px;
+            width: 100%;
+            max-width: 500px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 40px 80px rgba(0, 0, 0, 0.6);
+            text-align: center;
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.4s ease;
+        }}
+        .card:hover {{
+            transform: translateY(-8px) scale(1.01);
+            box-shadow: 0 50px 100px rgba(0, 0, 0, 0.7);
+        }}
+
+        .notification {{
+            background: rgba(255, 215, 0, 0.08);
+            border: 1px solid rgba(255, 215, 0, 0.15);
+            border-radius: 12px;
+            padding: 10px 14px;
+            margin-bottom: 18px;
+            font-size: 0.82rem;
+            color: #ffd700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: center;
+            transition: all 0.4s ease;
+        }}
+        .notification.warning {{
+            background: rgba(255, 107, 107, 0.08);
+            border-color: rgba(255, 107, 107, 0.2);
+            color: #ff6b6b;
+        }}
+        .notification.success {{
+            background: rgba(105, 219, 124, 0.08);
+            border-color: rgba(105, 219, 124, 0.15);
+            color: #69db7c;
+        }}
+
+        .badge {{
+            display: inline-block;
+            background: rgba(255, 215, 0, 0.15);
+            color: #ffd700;
+            padding: 4px 18px;
+            border-radius: 50px;
+            font-size: 0.7rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            border: 1px solid rgba(255, 215, 0, 0.2);
+            margin-bottom: 12px;
+        }}
+
+        h1 {{
+            font-size: 2.1rem;
+            font-weight: 800;
+            margin-bottom: 2px;
+            background: linear-gradient(135deg, #f7971e, #ffd200);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: none;
+        }}
+        .subtitle {{
+            font-size: 0.85rem;
+            opacity: 0.4;
+            margin-bottom: 25px;
+            letter-spacing: 1px;
+        }}
+
+        .status-with-dot {{
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .status-dot {{
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }}
+        .status-dot.active {{ background: #69db7c; box-shadow: 0 0 12px #69db7c; }}
+        .status-dot.limited {{ background: #ffd93d; box-shadow: 0 0 12px #ffd93d; }}
+        .status-dot.expired {{ background: #ff6b6b; box-shadow: 0 0 12px #ff6b6b; }}
+
+        .info-grid {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            text-align: right;
+            margin-bottom: 15px;
+        }}
+        .info-item {{
+            background: rgba(255, 255, 255, 0.04);
+            padding: 12px 14px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            transition: background 0.3s, transform 0.2s;
+        }}
+        .info-item:hover {{
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-2px);
+        }}
+        .info-item.full {{ grid-column: span 2; }}
+        .label {{
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            opacity: 0.5;
+            letter-spacing: 1.5px;
+            display: block;
+            margin-bottom: 2px;
+        }}
+        .value {{
+            font-size: 1.05rem;
+            font-weight: 700;
+        }}
+
+        .status-active {{ color: #69db7c; }}
+        .status-limited {{ color: #ffd93d; }}
+        .status-expired {{ color: #ff6b6b; }}
+
+        .inbounds-section {{
+            margin: 12px 0 10px;
+            text-align: right;
+        }}
+        .inbounds-title {{
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            opacity: 0.4;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+        }}
+        .inbound-tags {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            justify-content: center;
+        }}
+        .inbound-tag {{
+            background: rgba(255, 255, 255, 0.05);
+            padding: 3px 12px;
+            border-radius: 20px;
+            font-size: 0.65rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.6);
+            transition: all 0.3s;
+        }}
+        .inbound-tag:hover {{
+            background: rgba(255, 215, 0, 0.08);
+            border-color: rgba(255, 215, 0, 0.15);
+            color: #ffd700;
+        }}
+
+        .progress-section {{
+            margin: 10px 0 15px;
+        }}
+        .progress-label {{
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            opacity: 0.6;
+            margin-bottom: 4px;
+        }}
+        .progress-bar {{
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            overflow: hidden;
+        }}
+        .progress-fill {{
+            height: 100%;
+            background: linear-gradient(90deg, #f7971e, #ffd200);
+            border-radius: 10px;
+            transition: width 0.8s ease;
+            width: {percent}%;
+        }}
+
+        .qr-section {{
+            margin: 15px 0 5px;
+            display: flex;
+            justify-content: center;
+        }}
+        .qr-container {{
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px;
+            border-radius: 16px;
+            display: inline-block;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+            transition: transform 0.3s ease;
+        }}
+        .qr-container:hover {{
+            transform: scale(1.05);
+        }}
+        .qr-container img {{
+            display: block;
+            width: 150px;
+            height: 150px;
+            border-radius: 8px;
+        }}
+        .qr-label {{
+            font-size: 0.6rem;
+            opacity: 0.4;
+            margin-top: 6px;
+            letter-spacing: 1px;
+        }}
+
+        .btn-group {{
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }}
+        .btn {{
+            padding: 10px 24px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.85rem;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .btn-primary {{
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }}
+        .btn-primary:hover {{
+            transform: translateY(-3px) scale(1.03);
+            box-shadow: 0 12px 35px rgba(102, 126, 234, 0.4);
+        }}
+        .btn-secondary {{
+            background: linear-gradient(135deg, #f7971e, #ffd200);
+            color: #000;
+            box-shadow: 0 8px 25px rgba(255, 210, 0, 0.3);
+        }}
+        .btn-secondary:hover {{
+            transform: translateY(-3px) scale(1.03);
+            box-shadow: 0 12px 35px rgba(255, 210, 0, 0.4);
+        }}
+
+        .footer-text {{
+            margin-top: 18px;
+            font-size: 0.6rem;
+            opacity: 0.2;
+            letter-spacing: 1px;
+        }}
+
+        @media (max-width: 500px) {{
+            .card {{ padding: 25px 18px; }}
+            h1 {{ font-size: 1.6rem; }}
+            .info-grid {{ grid-template-columns: 1fr; }}
+            .info-item.full {{ grid-column: span 1; }}
+            .earth {{ width: 120px; height: 120px; }}
+            .orbit-1 {{ width: 260px; height: 260px; }}
+            .orbit-2 {{ width: 340px; height: 340px; }}
+            .orbit-3 {{ width: 420px; height: 420px; }}
+            .btn {{ font-size: 0.75rem; padding: 8px 16px; }}
+            .qr-container img {{ width: 100px; height: 100px; }}
+            .theme-selector {{
+                bottom: 10px;
+                left: 50%;
+                transform: translateX(-50%);
+                padding: 8px 12px;
+                gap: 8px;
+            }}
+            .theme-btn {{ width: 25px; height: 25px; }}
+        }}
+    </style>
+</head>
+<body>
+
+    <div class="theme-selector">
+        <button class="theme-btn space active" data-theme="space" title="فضایی"></button>
+        <button class="theme-btn ocean" data-theme="ocean" title="اقیانوسی"></button>
+        <button class="theme-btn sunset" data-theme="sunset" title="غروب"></button>
+        <button class="theme-btn forest" data-theme="forest" title="جنگلی"></button>
+        <button class="theme-btn neon" data-theme="neon" title="نئون"></button>
+    </div>
+
+    <div class="loader-wrapper" id="loaderWrapper">
+        <div style="text-align:center;">
+            <div class="loader"></div>
+            <div class="loader-text">در حال برقراری ارتباط با ایستگاه فضایی...</div>
+        </div>
+    </div>
+
+    <div class="stars-layer" id="starsLayer"></div>
+
+    <div class="shooting-star"></div>
+    <div class="shooting-star"></div>
+    <div class="shooting-star"></div>
+
+    <div class="rocket">🚀</div>
+    <div class="rocket">🛸</div>
+
+    <div class="space-scene">
+        <div class="orbit orbit-1">
+            <div class="satellite satellite-1"></div>
+        </div>
+        <div class="orbit orbit-2">
+            <div class="satellite satellite-2"></div>
+        </div>
+        <div class="orbit orbit-3">
+            <div class="satellite satellite-3"></div>
+        </div>
+        <div class="earth-wrapper">
+            <div class="earth">
+                <div class="earth-layer earth-base"></div>
+                <div class="earth-layer earth-continents"></div>
+                <div class="earth-layer earth-clouds"></div>
+                <div class="earth-layer earth-shine"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="notification" id="notificationBar">
+            <span>🛰️</span>
+            <span id="notificationText">ارتباط با ایستگاه فضایی برقرار است.</span>
+        </div>
+
+        <div class="badge">✦ فعال</div>
+        <h1 id="usernameDisplay">🚀 {link['label']}</h1>
+        <div class="subtitle">ایستگاه فضایی مارزبان</div>
+
+        <div class="info-grid">
+            <div class="info-item full">
+                <span class="label">وضعیت</span>
+                <span class="value status-{status}">
+                    <span class="status-with-dot">
+                        <span class="status-dot {status}"></span>
+                        {status_text}
+                    </span>
+                </span>
+            </div>
+            <div class="info-item">
+                <span class="label">📊 مصرف</span>
+                <span class="value">{used_gb} GB</span>
+            </div>
+            <div class="info-item">
+                <span class="label">📦 حجم کل</span>
+                <span class="value">{limit_gb if limit_gb > 0 else '∞'} GB</span>
+            </div>
+            <div class="info-item">
+                <span class="label">⏳ انقضا</span>
+                <span class="value" style="font-size:0.9rem;">{exp if exp else 'نامحدود'}</span>
+            </div>
+            <div class="info-item">
+                <span class="label">📅 روز باقی‌مانده</span>
+                <span class="value">{days_left_text}</span>
+            </div>
+        </div>
+
+        <div class="inbounds-section">
+            <div class="inbounds-title">🌐 سرورهای فعال</div>
+            <div class="inbound-tags" id="inboundTags">
+                <span class="inbound-tag">🚀 VLESS (اصلی)</span>
+                {''.join([f'<span class="inbound-tag">🌐 {addr}</span>' for addr in addresses[:3]])}
+            </div>
+        </div>
+
+        <div class="progress-section">
+            <div class="progress-label">
+                <span>میزان مصرف</span>
+                <span id="progressText">{percent}%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+
+        <div class="qr-section">
+            <div class="qr-container">
+                <img id="qrCodeImage" src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={config_base64}" alt="QR Code">
+                <div class="qr-label">✦ اسکن کنید ✦</div>
+            </div>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn btn-primary" onclick="copyLink()">📋 کپی لینک</button>
+            <button class="btn btn-secondary" onclick="copyConfig()">⚙️ کپی کانفیگ</button>
+        </div>
+
+        <div class="footer-text">✦ ارتباط پایدار ✦</div>
+    </div>
+
+    <script>
+        // ============================================================
+        // ۱. تنظیم تم‌های رنگی
+        // ============================================================
+        const themeBtns = document.querySelectorAll('.theme-btn');
+        const body = document.body;
+
+        const themes = {{
+            space: {{ background: 'radial-gradient(ellipse at bottom, #0d1b2a 0%, #000000 100%)' }},
+            ocean: {{ background: 'linear-gradient(135deg, #1a2980 0%, #26d0ce 100%)' }},
+            sunset: {{ background: 'linear-gradient(135deg, #f12711 0%, #f5af19 100%)' }},
+            forest: {{ background: 'linear-gradient(135deg, #134e5e 0%, #71b280 100%)' }},
+            neon: {{ background: 'linear-gradient(135deg, #1d1d2e 0%, #ff00cc 100%)' }}
+        }};
+
+        themeBtns.forEach(btn => {{
+            btn.addEventListener('click', function() {{
+                themeBtns.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                const theme = this.dataset.theme;
+                if (themes[theme]) {{
+                    body.style.background = themes[theme].background;
+                }}
+            }});
+        }});
+
+        // ============================================================
+        // ۲. مخفی کردن لودر
+        // ============================================================
+        window.addEventListener('load', function() {{
+            setTimeout(function() {{
+                document.getElementById('loaderWrapper').classList.add('hide');
+            }}, 1500);
+        }});
+
+        // ============================================================
+        // ۳. ستاره‌ها
+        // ============================================================
+        (function createStars() {{
+            const container = document.getElementById('starsLayer');
+            for (let i = 0; i < 300; i++) {{
+                const star = document.createElement('div');
+                star.className = 'star';
+                const size = Math.random() * 3.5 + 0.5;
+                star.style.width = size + 'px';
+                star.style.height = size + 'px';
+                star.style.left = Math.random() * 100 + '%';
+                star.style.top = Math.random() * 100 + '%';
+                star.style.setProperty('--duration', (Math.random() * 4 + 2) + 's');
+                star.style.setProperty('--delay', (Math.random() * 6) + 's');
+                container.appendChild(star);
+            }}
+        }})();
+
+        // ============================================================
+        // ۴. تغییر اسم به T.7
+        // ============================================================
+        const usernameElement = document.getElementById('usernameDisplay');
+        if (usernameElement) {{
+            const originalText = usernameElement.textContent || usernameElement.innerText;
+            const emoji = originalText.match(/^[^\\w]+/);
+            const newText = (emoji ? emoji[0] : '🚀 ') + 'T.7';
+            usernameElement.textContent = newText;
+        }}
+
+        // ============================================================
+        // ۵. توابع کپی
+        // ============================================================
+        const config = '{server_link}';
+        const subUrl = window.location.href;
+
+        function copyLink() {{
+            copyToClipboard(subUrl, '✅ لینک اشتراک کپی شد!');
+        }}
+
+        function copyConfig() {{
+            copyToClipboard(config, '✅ کانفیگ کپی شد!');
+        }}
+
+        function copyToClipboard(text, message) {{
+            if (navigator.clipboard) {{
+                navigator.clipboard.writeText(text).then(() => {{
+                    alert(message);
+                }}).catch(() => {{
+                    fallbackCopy(text, message);
+                }});
+            }} else {{
+                fallbackCopy(text, message);
+            }}
+        }}
+
+        function fallbackCopy(text, message) {{
+            const input = document.createElement('input');
+            input.value = text;
+            document.body.appendChild(input);
+            input.select();
+            document.execCommand('copy');
+            document.body.removeChild(input);
+            alert(message);
+        }}
+    </script>
+</body>
+</html>"""
+    
+    return HTMLResponse(content=html)
+
 
 RELAY_BUF = 64 * 1024
 
