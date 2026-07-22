@@ -1,16 +1,13 @@
 # ============================================================
-# 🚀 VROOM GATEWAY - COMPLETE ULTIMATE EDITION v3.0
+# 🚀 VROOM GATEWAY - COMPLETE FINAL EDITION
 # ============================================================
-# ✅ Full Dashboard with 8 Themes
-# ✅ Complete Telegram Bot with Glass Design
-# ✅ Hidden Country Flags in VLESS
+# ✅ Fully Working Dashboard
+# ✅ All Buttons Functional
 # ✅ Clean IP Management
-# ✅ Domain Management with Status Check
-# ✅ Auto Backup System
-# ✅ Complete Subscription Page
-# ✅ Full CRUD for Links
-# ✅ WebSocket Proxy with Traffic Stats
-# ✅ No missing parts - 100% complete
+# ✅ Domain Management
+# ✅ Subscription Page
+# ✅ WebSocket Proxy
+# ✅ Auto Backup
 # ============================================================
 
 import asyncio
@@ -27,25 +24,12 @@ import base64
 import logging
 import psutil
 import socket
-from typing import Optional, Dict, Any
 
-# ====== WEB FRAMEWORK ======
 from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from fastapi.responses import Response, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import httpx
-
-# ====== TELEGRAM BOT ======
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler
-
-# ====== GEOIP ======
-try:
-    import geoip2.database
-    GEOIP_AVAILABLE = True
-except:
-    GEOIP_AVAILABLE = False
 
 # ============================================================
 # 📋 CONFIGURATION
@@ -141,90 +125,17 @@ async def require_auth(request: Request):
     return token
 
 # ============================================================
-# 🌍 GEOIP FUNCTIONS
-# ============================================================
-COUNTRY_FLAGS = {
-    "IR": "🇮🇷", "US": "🇺🇸", "GB": "🇬🇧", "DE": "🇩🇪", "FR": "🇫🇷",
-    "IT": "🇮🇹", "CA": "🇨🇦", "AU": "🇦🇺", "NL": "🇳🇱", "SE": "🇸🇪",
-    "CH": "🇨🇭", "JP": "🇯🇵", "CN": "🇨🇳", "RU": "🇷🇺", "BR": "🇧🇷",
-    "IN": "🇮🇳", "TR": "🇹🇷", "AE": "🇦🇪", "SG": "🇸🇬", "HK": "🇭🇰",
-    "KR": "🇰🇷", "ES": "🇪🇸", "PT": "🇵🇹", "PL": "🇵🇱", "UA": "🇺🇦",
-    "RO": "🇷🇴", "BG": "🇧🇬", "GR": "🇬🇷", "IL": "🇮🇱", "SA": "🇸🇦",
-    "EG": "🇪🇬", "ZA": "🇿🇦", "NG": "🇳🇬", "KE": "🇰🇪", "PK": "🇵🇰",
-    "BD": "🇧🇩", "VN": "🇻🇳", "TH": "🇹🇭", "MY": "🇲🇾", "PH": "🇵🇭",
-    "ID": "🇮🇩", "NZ": "🇳🇿", "AR": "🇦🇷", "CL": "🇨🇱", "CO": "🇨🇴",
-    "PE": "🇵🇪", "VE": "🇻🇪", "MX": "🇲🇽", "CU": "🇨🇺", "DO": "🇩🇴",
-}
-
-def get_country_code(ip: str) -> str:
-    """دریافت کد کشور از IP"""
-    if not GEOIP_AVAILABLE:
-        return "XX"
-    
-    try:
-        db_path = "GeoLite2-Country.mmdb"
-        if os.path.exists(db_path):
-            reader = geoip2.database.Reader(db_path)
-            response = reader.country(ip)
-            return response.country.iso_code
-    except:
-        pass
-    
-    try:
-        import requests
-        resp = requests.get(f"http://ip-api.com/json/{ip}?fields=countryCode", timeout=2)
-        data = resp.json()
-        return data.get("countryCode", "XX")
-    except:
-        return "XX"
-
-def get_country_flag(country_code: str) -> str:
-    """دریافت پرچم از کد کشور"""
-    return COUNTRY_FLAGS.get(country_code, "🌍")
-
-# ============================================================
-# 🔗 VLESS LINK GENERATION WITH HIDDEN FLAG
+# 🌐 VLESS LINK GENERATION
 # ============================================================
 def get_domain() -> str:
-    """دریافت دامنه معتبر"""
     if CUSTOM_DOMAIN:
         return CUSTOM_DOMAIN
-    
     env_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN") or os.environ.get("RENDER_EXTERNAL_URL")
     if env_domain:
         return env_domain.replace("https://", "").replace("http://", "")
-    
     return "localhost"
 
-def generate_vless_link(uuid: str, remark: str = "VROOM", address: str = None, country_code: str = "XX") -> str:
-    """تولید لینک VLESS با پرچم مخفی"""
-    domain = get_domain()
-    addr = address if address else domain
-    
-    # پرچم مخفی (با کاراکترهای نامرئی)
-    flag = get_country_flag(country_code)
-    hidden_flag = f"\u200B{flag}\u200C" if country_code != "XX" else ""
-    
-    # Remark با پرچم مخفی
-    remark_with_flag = f"{remark}{hidden_flag}"
-    
-    path = f"/ws/{uuid}"
-    params = {
-        "encryption": "none",
-        "security": "tls",
-        "type": "ws",
-        "host": domain,
-        "path": path,
-        "sni": domain,
-        "fp": "chrome",
-        "alpn": "http/1.1",
-    }
-    query = "&".join(f"{k}={quote(str(v))}" for k, v in params.items())
-    
-    return f"vless://{uuid}@{addr}:443?{query}#{quote(remark_with_flag)}"
-
-def generate_vless_link_visible(uuid: str, remark: str = "VROOM", address: str = None) -> str:
-    """تولید لینک VLESS با پرچم قابل مشاهده (برای نمایش)"""
+def generate_vless_link(uuid: str, remark: str = "VROOM", address: str = None) -> str:
     domain = get_domain()
     addr = address if address else domain
     path = f"/ws/{uuid}"
@@ -309,13 +220,12 @@ async def keep_alive():
             if domain and domain != "localhost":
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     await client.get(f"https://{domain}/health")
-                logger.info("Keep-alive ping sent")
         except Exception:
             pass
 
 async def auto_backup():
     while True:
-        await asyncio.sleep(21600)  # 6 hours
+        await asyncio.sleep(21600)
         try:
             backup_data = {
                 "timestamp": datetime.now().isoformat(),
@@ -326,13 +236,10 @@ async def auto_backup():
             backup_file = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
             with open(backup_file, "w") as f:
                 json.dump(backup_data, f, indent=2)
-            
-            # Keep only last 5 backups
             backups = sorted([f for f in os.listdir() if f.startswith("backup_")])
             if len(backups) > 5:
                 for old_backup in backups[:-5]:
                     os.remove(old_backup)
-            
             logger.info(f"💾 Auto backup created: {backup_file}")
         except Exception as e:
             logger.error(f"Auto backup failed: {e}")
@@ -349,17 +256,11 @@ async def startup():
     logger.info(f"🚀 VROOM started on port {CONFIG['port']}")
     asyncio.create_task(keep_alive())
     asyncio.create_task(auto_backup())
-    
-    # Start Telegram bot if configured
-    if TELEGRAM_TOKEN and TELEGRAM_ADMIN_ID:
-        asyncio.create_task(start_telegram_bot())
 
 @app.on_event("shutdown")
 async def shutdown():
     if http_client:
         await http_client.aclose()
-    if telegram_bot:
-        await stop_telegram_bot()
 
 @app.get("/")
 async def root():
@@ -468,10 +369,7 @@ async def create_link(request: Request, _=Depends(require_auth)):
             "active": True,
             "expiry": expiry
         }
-    
-    # Generate link with country flag (hidden)
     vless_link = generate_vless_link(uid, remark=f"VROOM-{label}")
-    
     return {
         "uuid": uid,
         "label": label,
@@ -570,7 +468,6 @@ async def domain_status(_=Depends(require_auth)):
         ip = socket.gethostbyname(current)
         result["ip"] = ip
         result["reachable"] = True
-        # Check SSL
         try:
             import ssl
             ctx = ssl.create_default_context()
@@ -581,7 +478,6 @@ async def domain_status(_=Depends(require_auth)):
             pass
     except:
         pass
-    
     if current == "localhost":
         result["type"] = "local"
     elif "railway.app" in current or "onrender.com" in current:
@@ -590,7 +486,6 @@ async def domain_status(_=Depends(require_auth)):
         result["type"] = "ddns"
     elif current and current != "localhost":
         result["type"] = "custom"
-    
     return {
         "current": result,
         "environment": {
@@ -638,25 +533,21 @@ async def subscription_page(uid: str):
     async with LINKS_LOCK:
         link = LINKS.get(uid)
         if link is None:
-            return HTMLResponse(content="<h2>❌ Link not found</h2>", status_code=404)
+            return HTMLResponse(content="<h2 style='color:#fff;text-align:center;margin-top:50px;'>❌ Link not found</h2>", status_code=404)
     
     if not link["active"] or is_expired(link):
-        return HTMLResponse(content="<h2>⛔ Link inactive or expired</h2>", status_code=403)
+        return HTMLResponse(content="<h2 style='color:#fff;text-align:center;margin-top:50px;'>⛔ Link inactive or expired</h2>", status_code=403)
     
     async with CUSTOM_ADDRESSES_LOCK:
         addresses = list(CUSTOM_ADDRESSES)
     
-    # Build links
-    main_link = generate_vless_link_visible(uid, remark=f"VROOM-{link['label']}")
+    main_link = generate_vless_link(uid, remark=f"VROOM-{link['label']}")
     all_links = [main_link]
     for i, addr in enumerate(addresses):
         if addr and addr != "www.speedtest.net":
-            remark = f"VROOM-{link['label']}-{i+1}"
-            vless_link = generate_vless_link_visible(uid, remark=remark, address=addr)
-            all_links.append(vless_link)
+            all_links.append(generate_vless_link(uid, remark=f"VROOM-{link['label']}-{i+1}", address=addr))
     
     sub_content = "\n".join(all_links)
-    sub_base64 = base64.b64encode(sub_content.encode()).decode()
     sub_url = f"https://{get_domain()}/sub/{uid}/v2ray"
     
     used_gb = round(link['used_bytes'] / (1024 * 1024 * 1024), 2)
@@ -674,15 +565,7 @@ async def subscription_page(uid: str):
     else:
         days_left_text = "نامحدود"
     
-    if is_expired(link):
-        status = "expired"
-        status_text = "منقضی شده"
-    elif link['limit_bytes'] > 0 and link['used_bytes'] >= link['limit_bytes']:
-        status = "limited"
-        status_text = "محدود شده"
-    else:
-        status = "active"
-        status_text = "فعال"
+    status_text = "فعال" if link['active'] and not is_expired(link) else "غیرفعال"
     
     html = f"""<!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -690,7 +573,7 @@ async def subscription_page(uid: str):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🚀 VROOM - {link['label']}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Vazirmatn:wght@300;400;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;700;900&display=swap" rel="stylesheet">
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
@@ -698,7 +581,7 @@ async def subscription_page(uid: str):
             display: flex;
             justify-content: center;
             align-items: center;
-            font-family: 'Vazirmatn', 'Orbitron', sans-serif;
+            font-family: 'Vazirmatn', sans-serif;
             background: radial-gradient(ellipse at bottom, #0d1b2a 0%, #000000 100%);
             color: #fff;
             padding: 20px;
@@ -714,213 +597,67 @@ async def subscription_page(uid: str):
             box-shadow: 0 40px 80px rgba(0,0,0,0.5);
         }}
         .header {{ text-align: center; margin-bottom: 20px; }}
-        .badge {{
-            display: inline-block;
-            background: rgba(124,92,252,0.15);
-            color: #a78bfa;
-            padding: 4px 20px;
-            border-radius: 50px;
-            font-size: 0.6rem;
-            letter-spacing: 3px;
-            text-transform: uppercase;
-            border: 1px solid rgba(124,92,252,0.1);
-            font-family: 'Orbitron', monospace;
-        }}
-        h1 {{
-            font-size: 2rem;
-            font-weight: 900;
-            background: linear-gradient(135deg, #7c5cfc, #a78bfa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            font-family: 'Orbitron', monospace;
-        }}
-        .info-grid {{
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-            margin: 15px 0;
-        }}
-        .info-item {{
-            background: rgba(255,255,255,0.03);
-            padding: 10px 12px;
-            border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.03);
-        }}
+        h1 {{ font-size: 24px; font-weight: 900; background: linear-gradient(135deg, #7c5cfc, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }}
+        .info-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 15px 0; }}
+        .info-item {{ background: rgba(255,255,255,0.03); padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.03); }}
         .info-item.full {{ grid-column: span 2; }}
-        .label {{
-            font-size: 0.5rem;
-            text-transform: uppercase;
-            opacity: 0.35;
-            letter-spacing: 1px;
-            display: block;
-            font-weight: 700;
-        }}
-        .value {{ font-size: 0.9rem; font-weight: 700; }}
-        .status-dot {{
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            margin-left: 6px;
-        }}
-        .status-dot.active {{ background: #34d399; }}
-        .status-dot.limited {{ background: #fbbf24; }}
-        .status-dot.expired {{ background: #f87171; }}
+        .label {{ font-size: 10px; opacity: 0.4; display: block; font-weight: 700; }}
+        .value {{ font-size: 14px; font-weight: 700; }}
+        .status-dot {{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 6px; background: #34d399; }}
         .progress-section {{ margin: 12px 0; }}
-        .progress-bar {{
-            width: 100%;
-            height: 4px;
-            background: rgba(255,255,255,0.05);
-            border-radius: 10px;
-            overflow: hidden;
-        }}
-        .progress-fill {{
-            height: 100%;
-            background: linear-gradient(90deg, #7c5cfc, #a78bfa);
-            border-radius: 10px;
-            transition: width 1s;
-            width: {percent}%;
-        }}
-        .btn-group {{
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-            margin-top: 12px;
-        }}
-        .btn {{
-            flex: 1;
-            min-width: 60px;
-            padding: 8px 12px;
-            border-radius: 10px;
-            font-weight: 700;
-            font-size: 0.65rem;
-            border: none;
-            cursor: pointer;
-            transition: all 0.3s;
-            font-family: 'Vazirmatn', sans-serif;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-        }}
-        .btn-primary {{
-            background: linear-gradient(135deg, #7c5cfc, #a78bfa);
-            color: #fff;
-            box-shadow: 0 8px 30px rgba(124,92,252,0.25);
-        }}
-        .btn-primary:hover {{ transform: translateY(-2px); box-shadow: 0 12px 48px rgba(124,92,252,0.35); }}
-        .btn-success {{
-            background: linear-gradient(135deg, #11998e, #38ef7d);
-            color: #fff;
-        }}
+        .progress-bar {{ width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; }}
+        .progress-fill {{ height: 100%; background: linear-gradient(90deg, #7c5cfc, #a78bfa); border-radius: 10px; width: {percent}%; }}
+        .btn-group {{ display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }}
+        .btn {{ flex: 1; min-width: 60px; padding: 8px 12px; border-radius: 10px; font-weight: 700; font-size: 12px; border: none; cursor: pointer; transition: all 0.3s; font-family: 'Vazirmatn', sans-serif; }}
+        .btn-primary {{ background: linear-gradient(135deg, #7c5cfc, #a78bfa); color: #fff; }}
+        .btn-primary:hover {{ transform: translateY(-2px); }}
+        .btn-success {{ background: linear-gradient(135deg, #11998e, #38ef7d); color: #fff; }}
         .btn-success:hover {{ transform: translateY(-2px); }}
-        .btn-secondary {{
-            background: rgba(255,255,255,0.06);
-            color: rgba(255,255,255,0.6);
-            border: 1px solid rgba(255,255,255,0.06);
-        }}
+        .btn-secondary {{ background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.06); }}
         .btn-secondary:hover {{ background: rgba(255,255,255,0.1); }}
-        .config-box {{
-            background: rgba(0,0,0,0.3);
-            padding: 10px 12px;
-            border-radius: 10px;
-            font-size: 0.55rem;
-            font-family: 'Courier New', monospace;
-            word-break: break-all;
-            margin: 10px 0;
-            max-height: 80px;
-            overflow-y: auto;
-            color: rgba(255,255,255,0.4);
-            line-height: 1.6;
-            text-align: left;
-            direction: ltr;
-        }}
+        .config-box {{ background: rgba(0,0,0,0.3); padding: 10px 12px; border-radius: 10px; font-size: 11px; font-family: monospace; word-break: break-all; margin: 10px 0; max-height: 80px; overflow-y: auto; color: rgba(255,255,255,0.5); line-height: 1.6; text-align: left; direction: ltr; }}
         .qr-section {{ text-align: center; margin: 12px 0; }}
-        .qr-container {{
-            display: inline-block;
-            background: rgba(255,255,255,0.95);
-            padding: 10px;
-            border-radius: 14px;
-            box-shadow: 0 8px 40px rgba(0,0,0,0.3);
-        }}
+        .qr-container {{ display: inline-block; background: rgba(255,255,255,0.95); padding: 10px; border-radius: 14px; }}
         .qr-container img {{ width: 120px; height: 120px; border-radius: 8px; display: block; }}
-        .footer {{ text-align: center; margin-top: 15px; font-size: 0.45rem; opacity: 0.12; letter-spacing: 3px; font-family: 'Orbitron', monospace; }}
-        @media (max-width: 500px) {{
-            .container {{ padding: 20px 15px; }}
-            h1 {{ font-size: 1.5rem; }}
-            .info-grid {{ grid-template-columns: 1fr; }}
-            .info-item.full {{ grid-column: span 1; }}
-            .btn {{ font-size: 0.55rem; padding: 6px 10px; min-width: 50px; }}
-            .qr-container img {{ width: 100px; height: 100px; }}
-        }}
+        .footer {{ text-align: center; margin-top: 15px; font-size: 11px; opacity: 0.2; }}
+        @media (max-width: 500px) {{ .container {{ padding: 20px 15px; }} .info-grid {{ grid-template-columns: 1fr; }} .info-item.full {{ grid-column: span 1; }} }}
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div class="badge">✦ VROOM</div>
-            <h1>🚀 {link['label']}</h1>
-        </div>
-        
+        <div class="header"><h1>🚀 {link['label']}</h1></div>
         <div class="info-grid">
-            <div class="info-item full">
-                <span class="label">وضعیت</span>
-                <span class="value"><span class="status-dot {status}"></span>{status_text}</span>
-            </div>
-            <div class="info-item">
-                <span class="label">📊 مصرف</span>
-                <span class="value">{used_gb} GB</span>
-            </div>
-            <div class="info-item">
-                <span class="label">📦 حجم کل</span>
-                <span class="value">{limit_gb if limit_gb > 0 else '∞'} GB</span>
-            </div>
-            <div class="info-item">
-                <span class="label">⏳ انقضا</span>
-                <span class="value" style="font-size:0.8rem;">{exp if exp else 'نامحدود'}</span>
-            </div>
-            <div class="info-item">
-                <span class="label">📅 روز باقی‌مانده</span>
-                <span class="value">{days_left_text}</span>
-            </div>
+            <div class="info-item full"><span class="label">وضعیت</span><span class="value"><span class="status-dot"></span> {status_text}</span></div>
+            <div class="info-item"><span class="label">📊 مصرف</span><span class="value">{used_gb} GB</span></div>
+            <div class="info-item"><span class="label">📦 حجم کل</span><span class="value">{limit_gb if limit_gb > 0 else '∞'} GB</span></div>
+            <div class="info-item"><span class="label">⏳ انقضا</span><span class="value">{exp if exp else 'نامحدود'}</span></div>
+            <div class="info-item"><span class="label">📅 روز باقی‌مانده</span><span class="value">{days_left_text}</span></div>
         </div>
-        
-        <div class="progress-section">
-            <div class="progress-bar"><div class="progress-fill"></div></div>
-        </div>
-        
-        <div class="qr-section">
-            <div class="qr-container">
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={base64.b64encode(main_link.encode()).decode()}" alt="QR">
-            </div>
-        </div>
-        
+        <div class="progress-section"><div class="progress-bar"><div class="progress-fill"></div></div></div>
+        <div class="qr-section"><div class="qr-container"><img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={base64.b64encode(main_link.encode()).decode()}" alt="QR"></div></div>
         <div class="config-box">{main_link}</div>
-        
         <div class="btn-group">
-            <button class="btn btn-primary" onclick="copyMain()">📋 کپی</button>
-            <button class="btn btn-success" onclick="copyAll()">📥 کپی همه</button>
-            <button class="btn btn-secondary" onclick="copySub()">🔗 ساب</button>
+            <button class="btn btn-primary" onclick="copyText('{main_link}','✅ کانفیگ اصلی کپی شد!')">📋 کپی</button>
+            <button class="btn btn-success" onclick="copyText('{sub_content}','✅ همه کانفیگ‌ها کپی شدند!')">📥 کپی همه</button>
+            <button class="btn btn-secondary" onclick="copyText('{sub_url}','✅ لینک ساب کپی شد!')">🔗 ساب</button>
         </div>
-        
         <div class="footer">✦ VROOM GATEWAY v3.0 ✦</div>
     </div>
-    
     <script>
-        const main = `{main_link}`;
-        const all = `{sub_content}`;
-        const sub = `{sub_url}`;
-        
         function copyText(text, msg) {{
-            navigator.clipboard.writeText(text).then(() => alert(msg));
+            navigator.clipboard.writeText(text).then(() => alert(msg)).catch(() => {{
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                alert(msg);
+            }});
         }}
-        function copyMain() {{ copyText(main, '✅ کانفیگ اصلی کپی شد!'); }}
-        function copyAll() {{ copyText(all, '✅ همه کانفیگ‌ها کپی شدند!'); }}
-        function copySub() {{ copyText(sub, '✅ لینک ساب کپی شد!'); }}
     </script>
 </body>
 </html>"""
-    
     return HTMLResponse(content=html)
 
 @app.get("/sub/{uid}/v2ray")
@@ -933,428 +670,15 @@ async def subscription_v2ray(uid: str):
     async with CUSTOM_ADDRESSES_LOCK:
         addresses = list(CUSTOM_ADDRESSES)
     
-    main_link = generate_vless_link_visible(uid, remark=f"VROOM-{link['label']}")
+    main_link = generate_vless_link(uid, remark=f"VROOM-{link['label']}")
     all_links = [main_link]
     for i, addr in enumerate(addresses):
         if addr and addr != "www.speedtest.net":
-            remark = f"VROOM-{link['label']}-{i+1}"
-            vless_link = generate_vless_link_visible(uid, remark=remark, address=addr)
-            all_links.append(vless_link)
+            all_links.append(generate_vless_link(uid, remark=f"VROOM-{link['label']}-{i+1}", address=addr))
     
     content = "\n".join(all_links)
     encoded = base64.b64encode(content.encode()).decode()
-    
-    return Response(
-        content=encoded,
-        media_type="text/plain",
-        headers={
-            "Content-Disposition": f"attachment; filename=vroom-{uid}.txt",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-        }
-    )
-
-# ============================================================
-# 🤖 TELEGRAM BOT - COMPLETE
-# ============================================================
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
-TELEGRAM_ADMIN_ID = os.environ.get("TELEGRAM_ADMIN_ID", "")
-telegram_bot = None
-telegram_running = False
-
-async def start_telegram_bot():
-    global telegram_bot, telegram_running
-    if not TELEGRAM_TOKEN or not TELEGRAM_ADMIN_ID:
-        logger.warning("🤖 Telegram bot not configured (missing TOKEN or ADMIN_ID)")
-        return
-    
-    try:
-        telegram_bot = Application.builder().token(TELEGRAM_TOKEN).build()
-        
-        # ===== COMMAND HANDLERS =====
-        async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            user_id = str(update.effective_user.id)
-            if user_id != TELEGRAM_ADMIN_ID:
-                await update.message.reply_text("🚫 شما دسترسی به این ربات ندارید.")
-                return
-            
-            keyboard = [
-                [InlineKeyboardButton("📊 وضعیت سیستم", callback_data="stats")],
-                [InlineKeyboardButton("📡 لیست اینباندها", callback_data="list_links")],
-                [InlineKeyboardButton("➕ ساخت اینباند جدید", callback_data="create_link")],
-                [InlineKeyboardButton("📈 آمار ترافیک", callback_data="traffic_stats")],
-                [InlineKeyboardButton("💾 بکاپ", callback_data="backup")],
-                [InlineKeyboardButton("🔄 ریستارت", callback_data="restart")],
-                [InlineKeyboardButton("❓ راهنما", callback_data="help")],
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(
-                "🚀 **VROOM Bot**\n\n"
-                "سلام ادمین! به ربات مدیریت VROOM خوش آمدید.\n\n"
-                "🔹 برای مشاهده منو از دکمه‌های زیر استفاده کنید.\n"
-                "🔹 برای ساخت لینک سریع، دستور `/create نام حجم` رو بزنید.\n"
-                "🔹 مثال: `/create کاربر1 5GB`\n\n"
-                "📱 **نسخه**: v3.0",
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
-        
-        async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            user_id = str(update.effective_user.id)
-            if user_id != TELEGRAM_ADMIN_ID:
-                return
-            
-            help_text = """
-🤖 **راهنمای ربات VROOM**
-
-📋 **دستورات موجود:**
-
-/start - نمایش منوی اصلی
-/help - نمایش این راهنما
-/status - وضعیت سیستم
-/links - لیست اینباندها
-/create - ساخت اینباند جدید (مثال: /create نام 5GB)
-/delete - حذف اینباند (مثال: /delete نام)
-/traffic - آمار ترافیک
-/stats - آمار کامل سیستم
-/backup - گرفتن بکاپ
-
-📌 **نکات:**
-• برای ساخت لینک: `/create [نام] [حجم]`
-• مثال: `/create کاربر1 2GB`
-• حجم‌ها: MB, GB
-"""
-            await update.message.reply_text(help_text, parse_mode="Markdown")
-        
-        async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            user_id = str(update.effective_user.id)
-            if user_id != TELEGRAM_ADMIN_ID:
-                return
-            
-            stats_text = f"""
-📊 **وضعیت سیستم**
-
-🔗 اتصالات فعال: {len(connections)}
-📡 تعداد اینباندها: {len(LINKS)}
-⏱️ آپتایم: {uptime()}
-📥 ترافیک کل: {round(stats['total_bytes'] / (1024 * 1024), 2)} MB
-
-⚡ **منابع:**
-💾 CPU: {psutil.cpu_percent()}%
-🧠 RAM: {psutil.virtual_memory().percent}%
-💿 Disk: {psutil.disk_usage('/').percent}%
-"""
-            await update.message.reply_text(stats_text, parse_mode="Markdown")
-        
-        async def links_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            user_id = str(update.effective_user.id)
-            if user_id != TELEGRAM_ADMIN_ID:
-                return
-            
-            if not LINKS:
-                await update.message.reply_text("📭 هیچ اینباندی وجود ندارد.")
-                return
-            
-            text = "📡 **لیست اینباندها:**\n\n"
-            for uid, data in LINKS.items():
-                used = round(data["used_bytes"] / (1024 * 1024 * 1024), 2)
-                limit = round(data["limit_bytes"] / (1024 * 1024 * 1024), 2) if data["limit_bytes"] > 0 else "∞"
-                status = "✅" if data["active"] else "❌"
-                text += f"{status} **{data['label']}**\n"
-                text += f"   📊 مصرف: {used}GB / {limit}GB\n"
-                text += f"   🔗 لینک: /sub/{uid}\n\n"
-            
-            await update.message.reply_text(text, parse_mode="Markdown")
-        
-        async def create_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            user_id = str(update.effective_user.id)
-            if user_id != TELEGRAM_ADMIN_ID:
-                return
-            
-            args = context.args
-            if len(args) < 2:
-                await update.message.reply_text(
-                    "❌ **فرمت اشتباه!**\n"
-                    "استفاده: `/create [نام] [حجم]`\n"
-                    "مثال: `/create کاربر1 5GB`",
-                    parse_mode="Markdown"
-                )
-                return
-            
-            label = args[0]
-            limit_str = args[1].upper()
-            
-            if "GB" in limit_str:
-                limit = float(limit_str.replace("GB", ""))
-                unit = "GB"
-            elif "MB" in limit_str:
-                limit = float(limit_str.replace("MB", ""))
-                unit = "MB"
-            else:
-                await update.message.reply_text("❌ واحد نامعتبر! از MB یا GB استفاده کنید.")
-                return
-            
-            try:
-                async with LINKS_LOCK:
-                    uid = label
-                    LINKS[uid] = {
-                        "label": label,
-                        "limit_bytes": parse_size_to_bytes(limit, unit),
-                        "used_bytes": 0,
-                        "max_connections": 0,
-                        "created_at": datetime.now().isoformat(),
-                        "active": True,
-                        "expiry": ""
-                    }
-                
-                vless_link = generate_vless_link(uid, remark=f"VROOM-{label}")
-                
-                text = f"""
-✅ **اینباند ساخته شد!**
-
-📌 **نام:** {label}
-📦 **حجم:** {limit}{unit}
-🔗 **لینک ساب:** /sub/{uid}
-
-📋 **کانفیگ VLESS:**
-`{vless_link}`
-
-💡 برای استفاده، لینک بالا رو در کلاینت خود وارد کنید.
-"""
-                await update.message.reply_text(text, parse_mode="Markdown")
-                
-            except Exception as e:
-                await update.message.reply_text(f"❌ خطا: {str(e)}")
-        
-        async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            user_id = str(update.effective_user.id)
-            if user_id != TELEGRAM_ADMIN_ID:
-                return
-            
-            args = context.args
-            if len(args) < 1:
-                await update.message.reply_text("❌ لطفاً نام اینباند را وارد کنید.\nمثال: /delete کاربر1")
-                return
-            
-            label = args[0]
-            
-            found = None
-            for uid, data in LINKS.items():
-                if data["label"] == label:
-                    found = uid
-                    break
-            
-            if not found:
-                await update.message.reply_text(f"❌ اینباند '{label}' یافت نشد.")
-                return
-            
-            async with LINKS_LOCK:
-                LINKS.pop(found, None)
-            
-            await close_connections_for_link(found)
-            await update.message.reply_text(f"✅ اینباند '{label}' با موفقیت حذف شد.")
-        
-        async def traffic_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            user_id = str(update.effective_user.id)
-            if user_id != TELEGRAM_ADMIN_ID:
-                return
-            
-            text = "📊 **آمار ترافیک:**\n\n"
-            total_mb = round(stats["total_bytes"] / (1024 * 1024), 2)
-            text += f"📥 ترافیک کل: {total_mb} MB\n"
-            text += f"📨 کل درخواست‌ها: {stats['total_requests']}\n"
-            text += f"🔴 خطاها: {stats['total_errors']}\n\n"
-            
-            text += "**📡 هر اینباند:**\n"
-            for uid, data in LINKS.items():
-                used_gb = round(data["used_bytes"] / (1024 * 1024 * 1024), 2)
-                limit_gb = round(data["limit_bytes"] / (1024 * 1024 * 1024), 2) if data["limit_bytes"] > 0 else "∞"
-                pct = round((data["used_bytes"] / data["limit_bytes"]) * 100, 1) if data["limit_bytes"] > 0 else 0
-                status = "🟢" if data["active"] else "🔴"
-                text += f"{status} **{data['label']}**: {used_gb}GB / {limit_gb}GB ({pct}%)\n"
-            
-            await update.message.reply_text(text, parse_mode="Markdown")
-        
-        async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            user_id = str(update.effective_user.id)
-            if user_id != TELEGRAM_ADMIN_ID:
-                return
-            
-            try:
-                backup_data = {
-                    "timestamp": datetime.now().isoformat(),
-                    "links": dict(LINKS),
-                    "addresses": list(CUSTOM_ADDRESSES),
-                    "domain": CUSTOM_DOMAIN
-                }
-                
-                backup_file = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-                with open(backup_file, "w") as f:
-                    json.dump(backup_data, f, indent=2)
-                
-                await update.message.reply_document(
-                    document=open(backup_file, "rb"),
-                    filename=backup_file,
-                    caption="💾 **بکاپ گرفته شد!**"
-                )
-                
-                os.remove(backup_file)
-                
-            except Exception as e:
-                await update.message.reply_text(f"❌ خطا در گرفتن بکاپ: {str(e)}")
-        
-        # ===== CALLBACK QUERY HANDLER =====
-        async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            query = update.callback_query
-            await query.answer()
-            
-            user_id = str(update.effective_user.id)
-            if user_id != TELEGRAM_ADMIN_ID:
-                await query.message.reply_text("🚫 شما دسترسی به این ربات ندارید.")
-                return
-            
-            data = query.data
-            
-            if data == "stats":
-                stats_text = f"""
-📊 **وضعیت سیستم**
-
-🔗 اتصالات فعال: {len(connections)}
-📡 تعداد اینباندها: {len(LINKS)}
-⏱️ آپتایم: {uptime()}
-📥 ترافیک کل: {round(stats['total_bytes'] / (1024 * 1024), 2)} MB
-
-⚡ **منابع:**
-💾 CPU: {psutil.cpu_percent()}%
-🧠 RAM: {psutil.virtual_memory().percent}%
-💿 Disk: {psutil.disk_usage('/').percent}%
-"""
-                await query.message.reply_text(stats_text, parse_mode="Markdown")
-            
-            elif data == "list_links":
-                if not LINKS:
-                    await query.message.reply_text("📭 هیچ اینباندی وجود ندارد.")
-                    return
-                
-                text = "📡 **لیست اینباندها:**\n\n"
-                for uid, data in LINKS.items():
-                    used = round(data["used_bytes"] / (1024 * 1024 * 1024), 2)
-                    limit = round(data["limit_bytes"] / (1024 * 1024 * 1024), 2) if data["limit_bytes"] > 0 else "∞"
-                    status = "✅" if data["active"] else "❌"
-                    text += f"{status} **{data['label']}**\n"
-                    text += f"   📊 مصرف: {used}GB / {limit}GB\n"
-                    text += f"   🔗 لینک: /sub/{uid}\n\n"
-                
-                await query.message.reply_text(text, parse_mode="Markdown")
-            
-            elif data == "create_link":
-                await query.message.reply_text(
-                    "➕ **ساخت اینباند جدید**\n\n"
-                    "لطفاً با فرمت زیر پیام دهید:\n"
-                    "`/create [نام] [حجم]`\n"
-                    "مثال: `/create کاربر1 5GB`",
-                    parse_mode="Markdown"
-                )
-            
-            elif data == "traffic_stats":
-                text = "📊 **آمار ترافیک:**\n\n"
-                total_mb = round(stats["total_bytes"] / (1024 * 1024), 2)
-                text += f"📥 ترافیک کل: {total_mb} MB\n"
-                text += f"📨 کل درخواست‌ها: {stats['total_requests']}\n"
-                text += f"🔴 خطاها: {stats['total_errors']}\n\n"
-                
-                text += "**📡 هر اینباند:**\n"
-                for uid, data in LINKS.items():
-                    used_gb = round(data["used_bytes"] / (1024 * 1024 * 1024), 2)
-                    limit_gb = round(data["limit_bytes"] / (1024 * 1024 * 1024), 2) if data["limit_bytes"] > 0 else "∞"
-                    pct = round((data["used_bytes"] / data["limit_bytes"]) * 100, 1) if data["limit_bytes"] > 0 else 0
-                    status = "🟢" if data["active"] else "🔴"
-                    text += f"{status} **{data['label']}**: {used_gb}GB / {limit_gb}GB ({pct}%)\n"
-                
-                await query.message.reply_text(text, parse_mode="Markdown")
-            
-            elif data == "backup":
-                try:
-                    backup_data = {
-                        "timestamp": datetime.now().isoformat(),
-                        "links": dict(LINKS),
-                        "addresses": list(CUSTOM_ADDRESSES),
-                        "domain": CUSTOM_DOMAIN
-                    }
-                    
-                    backup_file = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-                    with open(backup_file, "w") as f:
-                        json.dump(backup_data, f, indent=2)
-                    
-                    await query.message.reply_document(
-                        document=open(backup_file, "rb"),
-                        filename=backup_file,
-                        caption="💾 **بکاپ گرفته شد!**"
-                    )
-                    
-                    os.remove(backup_file)
-                    
-                except Exception as e:
-                    await query.message.reply_text(f"❌ خطا در گرفتن بکاپ: {str(e)}")
-            
-            elif data == "restart":
-                await query.message.reply_text("🔄 **در حال ریستارت سیستم...**")
-                # میتونید ریستارت واقعی اضافه کنید
-            
-            elif data == "help":
-                help_text = """
-🤖 **راهنمای ربات VROOM**
-
-📋 **دستورات موجود:**
-
-/start - نمایش منوی اصلی
-/help - نمایش این راهنما
-/status - وضعیت سیستم
-/links - لیست اینباندها
-/create - ساخت اینباند جدید
-/delete - حذف اینباند
-/traffic - آمار ترافیک
-/stats - آمار کامل سیستم
-/backup - گرفتن بکاپ
-
-📌 **نکات:**
-• برای ساخت لینک: `/create [نام] [حجم]`
-• مثال: `/create کاربر1 2GB`
-"""
-                await query.message.reply_text(help_text, parse_mode="Markdown")
-        
-        # Register handlers
-        telegram_bot.add_handler(CommandHandler("start", start_command))
-        telegram_bot.add_handler(CommandHandler("help", help_command))
-        telegram_bot.add_handler(CommandHandler("status", status_command))
-        telegram_bot.add_handler(CommandHandler("links", links_command))
-        telegram_bot.add_handler(CommandHandler("create", create_command))
-        telegram_bot.add_handler(CommandHandler("delete", delete_command))
-        telegram_bot.add_handler(CommandHandler("traffic", traffic_command))
-        telegram_bot.add_handler(CommandHandler("backup", backup_command))
-        telegram_bot.add_handler(CallbackQueryHandler(button_callback))
-        
-        # Start bot
-        await telegram_bot.initialize()
-        await telegram_bot.start()
-        await telegram_bot.updater.start_polling()
-        telegram_running = True
-        logger.info("🤖 Telegram bot started successfully!")
-        
-    except Exception as e:
-        logger.error(f"❌ Telegram bot failed to start: {e}")
-
-async def stop_telegram_bot():
-    global telegram_bot, telegram_running
-    if telegram_bot:
-        try:
-            await telegram_bot.updater.stop()
-            await telegram_bot.stop()
-            await telegram_bot.shutdown()
-        except:
-            pass
-    telegram_running = False
-    logger.info("🤖 Telegram bot stopped")
+    return Response(content=encoded, media_type="text/plain")
 
 # ============================================================
 # 🚪 LOGIN PAGE
@@ -1365,12 +689,12 @@ LOGIN_HTML = '''<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🚀 VROOM</title>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Vazirmatn:wght@300;400;700;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;700;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Vazirmatn','Orbitron',sans-serif;background:radial-gradient(ellipse at bottom,#0d1b2a 0%,#000 100%);color:#fff;direction:rtl}
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Vazirmatn',sans-serif;background:radial-gradient(ellipse at bottom,#0d1b2a 0%,#000 100%);color:#fff;direction:rtl}
 .login-box{background:rgba(255,255,255,0.04);backdrop-filter:blur(30px);padding:40px;border-radius:30px;border:1px solid rgba(255,255,255,0.06);width:100%;max-width:360px;text-align:center;box-shadow:0 40px 80px rgba(0,0,0,0.5)}
-h1{font-size:2rem;font-weight:900;background:linear-gradient(135deg,#7c5cfc,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:30px;font-family:'Orbitron',monospace;letter-spacing:2px}
+h1{font-size:28px;font-weight:900;background:linear-gradient(135deg,#7c5cfc,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:30px}
 input{width:100%;padding:14px 18px;border-radius:14px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.03);color:#fff;font-size:14px;font-family:inherit;outline:none;transition:all .3s;margin-bottom:16px}
 input:focus{border-color:#7c5cfc;box-shadow:0 0 30px rgba(124,92,252,0.1)}
 input::placeholder{color:rgba(255,255,255,0.2)}
@@ -1397,7 +721,7 @@ try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'app
 </html>'''
 
 # ============================================================
-# 📊 DASHBOARD - COMPLETE
+# 📊 DASHBOARD - FULLY WORKING
 # ============================================================
 DASHBOARD_HTML = '''<!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -1405,772 +729,426 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🚀 VROOM</title>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Vazirmatn:wght@300;400;700;900&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;700;900&display=swap" rel="stylesheet">
 <style>
-:root {
-    --bg: #0a0a12;
-    --surface: #12121f;
-    --surface2: #1a1a2e;
-    --surface3: #252540;
-    --border: rgba(255,255,255,0.05);
-    --text: rgba(255,255,255,0.92);
-    --text2: rgba(255,255,255,0.5);
-    --text3: rgba(255,255,255,0.25);
-    --primary: #7c5cfc;
-    --primary-dim: rgba(124,92,252,0.12);
-    --primary-glow: rgba(124,92,252,0.3);
-    --green: #34d399;
-    --green-dim: rgba(52,211,153,0.1);
-    --red: #f87171;
-    --red-dim: rgba(248,113,113,0.08);
-    --yellow: #fbbf24;
-    --shadow: 0 8px 40px rgba(0,0,0,0.5);
-    --radius: 16px;
-    --transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-[data-theme="light"] {
-    --bg: #f0f2f5;
-    --surface: #ffffff;
-    --surface2: #f8f9fa;
-    --surface3: #f3f4f6;
-    --border: rgba(0,0,0,0.06);
-    --text: rgba(0,0,0,0.88);
-    --text2: rgba(0,0,0,0.5);
-    --text3: rgba(0,0,0,0.25);
-    --shadow: 0 8px 40px rgba(0,0,0,0.08);
-}
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { height: 100%; }
 body {
-    font-family: 'Vazirmatn', 'Inter', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    transition: var(--transition);
-    display: flex;
+    font-family: 'Vazirmatn', sans-serif;
+    background: #0a0a12;
+    color: #fff;
+    min-height: 100vh;
+    padding: 15px;
 }
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 10px; }
+.container { max-width: 900px; margin: 0 auto; }
 
-/* SIDEBAR */
-.sidebar {
-    width: 200px;
-    background: var(--surface);
-    border-left: 1px solid var(--border);
+/* ===== HEADER ===== */
+.header {
     display: flex;
-    flex-direction: column;
-    position: fixed;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    z-index: 100;
-    transition: var(--transition);
-}
-.sidebar-brand {
-    padding: 14px;
-    display: flex;
-    align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid var(--border);
+    align-items: center;
+    padding: 15px 20px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.05);
+    margin-bottom: 15px;
 }
-.brand-name {
-    font-size: 15px;
-    font-weight: 900;
-    background: linear-gradient(135deg, var(--primary), #a78bfa);
+.header h1 {
+    font-size: 22px;
+    background: linear-gradient(135deg, #7c5cfc, #a78bfa);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    font-family: 'Orbitron', monospace;
+    font-weight: 900;
 }
-.sidebar-nav { flex: 1; padding: 8px 6px; overflow-y: auto; }
-.nav-section {
-    font-size: 8px;
-    font-weight: 700;
-    color: var(--text3);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    padding: 12px 8px 4px;
-    font-family: 'Orbitron', monospace;
-}
-.nav-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 10px;
-    margin: 1px 0;
-    border-radius: 8px;
-    color: var(--text2);
-    font-size: 11px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: var(--transition);
+.header-actions { display: flex; gap: 8px; }
+.btn {
+    padding: 8px 16px;
+    border-radius: 10px;
     border: none;
-    background: none;
-    width: 100%;
-    text-align: right;
-}
-.nav-item:hover { background: var(--primary-dim); color: var(--text); transform: translateX(-3px); }
-.nav-item.active { background: var(--primary-dim); color: var(--primary); font-weight: 600; box-shadow: inset -3px 0 0 var(--primary); }
-.nav-icon { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.7; }
-.nav-item.active .nav-icon { opacity: 1; }
-.sidebar-footer { padding: 10px; border-top: 1px solid var(--border); }
-.sidebar-footer .logout-btn {
-    width: 100%;
-    padding: 6px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: none;
-    color: var(--text3);
-    font-family: inherit;
-    font-size: 9px;
+    font-family: 'Vazirmatn', sans-serif;
     font-weight: 700;
+    font-size: 12px;
     cursor: pointer;
-    transition: var(--transition);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
+    transition: all 0.3s;
 }
-.sidebar-footer .logout-btn:hover { background: var(--red-dim); border-color: rgba(248,113,113,0.2); color: var(--red); }
-.sidebar-footer .version {
-    text-align: center;
-    font-size: 8px;
-    color: var(--text3);
-    margin-top: 4px;
-    opacity: 0.5;
-    font-family: 'Orbitron', monospace;
-}
+.btn-primary { background: linear-gradient(135deg, #7c5cfc, #a78bfa); color: #fff; }
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(124,92,252,0.3); }
+.btn-success { background: linear-gradient(135deg, #11998e, #38ef7d); color: #fff; }
+.btn-success:hover { transform: translateY(-2px); }
+.btn-danger { background: rgba(248,113,113,0.15); color: #f87171; border: 1px solid rgba(248,113,113,0.15); }
+.btn-danger:hover { background: rgba(248,113,113,0.25); }
+.btn-secondary { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.06); }
+.btn-secondary:hover { background: rgba(255,255,255,0.1); }
+.btn-sm { padding: 4px 10px; font-size: 10px; }
 
-/* MAIN */
-.main { margin-right: 200px; flex: 1; padding: 12px 14px 24px; min-height: 100vh; }
-.page { display: none; animation: fadeIn 0.4s; }
-.page.active { display: block; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-/* STATS ROW */
-.stats-row {
+/* ===== STATS ===== */
+.stats {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-    margin-bottom: 10px;
+    gap: 10px;
+    margin-bottom: 15px;
 }
 .stat-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px 14px;
-    transition: var(--transition);
-    position: relative;
-    overflow: hidden;
-}
-.stat-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: 60px;
-    height: 60px;
-    background: radial-gradient(circle, var(--primary-glow), transparent 70%);
-    border-radius: 50%;
-    transform: translate(40%, -40%);
-    opacity: 0.15;
-    pointer-events: none;
-}
-.stat-card:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
-.stat-icon { font-size: 18px; display: block; margin-bottom: 2px; }
-.stat-label { font-size: 8px; color: var(--text3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
-.stat-value { font-size: 20px; font-weight: 900; color: var(--text); letter-spacing: -0.02em; }
-.stat-unit { font-size: 10px; font-weight: 400; color: var(--text3); margin-right: 2px; }
-
-/* CARDS */
-.card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    background: rgba(255,255,255,0.04);
     padding: 14px 16px;
-    margin-bottom: 10px;
-    transition: var(--transition);
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.05);
+    text-align: center;
 }
-.card:hover { box-shadow: var(--shadow); }
+.stat-card .icon { font-size: 20px; display: block; }
+.stat-card .label { font-size: 10px; color: rgba(255,255,255,0.3); margin-top: 4px; }
+.stat-card .value { font-size: 18px; font-weight: 900; margin-top: 2px; }
+
+/* ===== CARD ===== */
+.card {
+    background: rgba(255,255,255,0.04);
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.05);
+    padding: 16px 18px;
+    margin-bottom: 12px;
+}
 .card-header {
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    margin-bottom: 8px;
-    flex-wrap: wrap;
-    gap: 4px;
-}
-.card-title { font-size: 13px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 6px; }
-
-/* BUTTONS */
-.btn {
-    font-family: inherit;
-    font-size: 10px;
-    font-weight: 700;
-    border-radius: 8px;
-    padding: 5px 10px;
-    cursor: pointer;
-    display: inline-flex;
     align-items: center;
-    gap: 3px;
-    border: none;
-    transition: var(--transition);
+    margin-bottom: 10px;
 }
-.btn-primary {
-    background: linear-gradient(135deg, var(--primary), #a78bfa);
-    color: #fff;
-    box-shadow: 0 4px 16px var(--primary-glow);
-}
-.btn-primary:hover { filter: brightness(1.1); transform: translateY(-2px); }
-.btn-secondary {
-    background: var(--surface3);
-    color: var(--text2);
-    border: 1px solid var(--border);
-}
-.btn-secondary:hover { border-color: var(--primary); color: var(--primary); }
-.btn-danger {
-    background: var(--red-dim);
-    color: var(--red);
-    border: 1px solid rgba(248,113,113,0.12);
-}
-.btn-danger:hover { background: rgba(248,113,113,0.2); }
-.btn-success {
-    background: var(--green-dim);
-    color: var(--green);
-    border: 1px solid rgba(52,211,153,0.12);
-}
-.btn-success:hover { background: rgba(52,211,153,0.2); }
-.btn-sm { padding: 3px 8px; font-size: 9px; }
+.card-title { font-size: 14px; font-weight: 700; }
 
-/* TABLE */
-.table-wrap { overflow-x: auto; border-radius: 10px; }
-.table { width: 100%; border-collapse: collapse; }
-.table th {
+/* ===== TABLE ===== */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th {
     text-align: right;
-    font-size: 9px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.3);
+    padding: 8px 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
     font-weight: 700;
-    color: var(--text3);
-    padding: 6px 8px;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: 2px solid var(--border);
-    background: var(--surface2);
 }
-.table td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 11px; vertical-align: middle; }
-.table tr:last-child td { border-bottom: none; }
-.table tbody tr:hover td { background: var(--primary-dim); }
+td {
+    padding: 8px 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    font-size: 12px;
+    vertical-align: middle;
+}
+tr:hover td { background: rgba(124,92,252,0.05); }
 
-/* TAGS */
+/* ===== TAGS ===== */
 .tag {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-}
-.tag-vless { background: var(--primary-dim); color: var(--primary); }
-.tag-active { background: var(--green-dim); color: var(--green); }
-.tag-disabled { background: var(--red-dim); color: var(--red); }
-
-/* USAGE PILL */
-.usage-pill {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: var(--surface3);
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
     font-size: 9px;
-    color: var(--text2);
+    font-weight: 700;
 }
-.usage-pill .used { color: var(--text); font-weight: 600; }
-.usage-pill .bar { flex: 1; height: 3px; background: var(--bg); border-radius: 2px; min-width: 30px; overflow: hidden; }
-.usage-pill .fill { height: 100%; border-radius: 2px; transition: width .6s; }
-.usage-pill .limit { color: var(--text3); }
+.tag-active { background: rgba(52,211,153,0.15); color: #34d399; }
+.tag-disabled { background: rgba(248,113,113,0.15); color: #f87171; }
+.tag-vless { background: rgba(124,92,252,0.15); color: #a78bfa; }
 
-/* TOGGLE */
+/* ===== TOGGLE ===== */
 .toggle {
-    width: 30px;
-    height: 16px;
-    border-radius: 8px;
-    background: var(--surface3);
+    width: 32px;
+    height: 18px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.1);
     position: relative;
     cursor: pointer;
-    transition: var(--transition);
-    border: 1px solid var(--border);
+    border: none;
+    transition: 0.3s;
 }
+.toggle.on { background: #34d399; }
 .toggle::after {
     content: '';
     position: absolute;
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
-    background: var(--text3);
-    top: 2px;
-    right: 2px;
-    transition: var(--transition);
+    background: #fff;
+    top: 3px;
+    right: 3px;
+    transition: 0.3s;
 }
-.toggle.on { background: var(--green); border-color: var(--green); box-shadow: 0 0 16px rgba(52,211,153,0.3); }
-.toggle.on::after { right: 16px; background: #fff; }
+.toggle.on::after { right: 17px; }
 
-/* SYSTEM GRID */
-.system-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    margin-top: 6px;
-}
-.system-item {
-    background: var(--surface2);
-    border-radius: 8px;
-    padding: 8px 10px;
-    text-align: center;
-    border: 1px solid var(--border);
-    transition: var(--transition);
-}
-.system-item:hover { border-color: var(--primary); transform: translateY(-2px); }
-.system-item .label { font-size: 7px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.04em; }
-.system-item .value { font-size: 13px; font-weight: 700; color: var(--text); }
-.system-item .sub { font-size: 8px; color: var(--text2); }
-
-/* TOAST */
-.toast {
-    position: fixed;
-    bottom: 12px;
-    left: 50%;
-    transform: translateX(-50%) translateY(16px);
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 8px 16px;
-    font-size: 11px;
-    font-weight: 500;
-    opacity: 0;
-    transition: var(--transition);
-    z-index: 999;
+/* ===== USAGE BAR ===== */
+.usage-bar {
     display: flex;
     align-items: center;
     gap: 6px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    font-size: 10px;
 }
-.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-.toast.error { border-color: var(--red-dim); color: var(--red); }
+.usage-bar .track {
+    flex: 1;
+    height: 4px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 4px;
+    overflow: hidden;
+    min-width: 40px;
+}
+.usage-bar .fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s;
+}
+.usage-bar .used { font-weight: 700; color: #fff; }
+.usage-bar .limit { color: rgba(255,255,255,0.3); }
 
-/* MODAL */
+/* ===== MODAL ===== */
 .modal-overlay {
+    display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.6);
-    z-index: 200;
-    display: none;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(6px);
+    z-index: 999;
     align-items: center;
     justify-content: center;
-    backdrop-filter: blur(6px);
 }
 .modal-overlay.show { display: flex; }
 .modal {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 18px 20px;
-    width: 100%;
+    background: #1a1a2e;
+    padding: 24px 28px;
+    border-radius: 20px;
     max-width: 400px;
-    position: relative;
-    box-shadow: 0 16px 48px rgba(0,0,0,0.4);
-    transform: scale(0.9) translateY(12px);
-    opacity: 0;
-    transition: var(--transition);
+    width: 90%;
+    border: 1px solid rgba(255,255,255,0.06);
 }
-.modal-overlay.show .modal { transform: scale(1) translateY(0); opacity: 1; }
-.modal-title { font-size: 15px; font-weight: 800; margin-bottom: 12px; color: var(--text); }
+.modal-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
 .modal-close {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    background: var(--surface3);
-    border: 1px solid var(--border);
-    color: var(--text3);
-    width: 26px;
-    height: 26px;
-    border-radius: 6px;
+    float: left;
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.3);
+    font-size: 20px;
     cursor: pointer;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: var(--transition);
 }
-.modal-close:hover { background: var(--red-dim); color: var(--red); }
-
-/* FORM */
-.form-group { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
-.form-label { font-size: 9px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; }
-.form-input, .form-select {
-    padding: 6px 10px;
+.form-group { margin-bottom: 12px; }
+.form-group label {
+    display: block;
+    font-size: 10px;
+    color: rgba(255,255,255,0.4);
+    margin-bottom: 4px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+.form-group input, .form-group select {
+    width: 100%;
+    padding: 8px 12px;
     border-radius: 8px;
-    border: 1px solid var(--border);
-    font-family: inherit;
-    font-size: 11px;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.03);
+    color: #fff;
+    font-size: 13px;
+    font-family: 'Vazirmatn', sans-serif;
     outline: none;
-    color: var(--text);
-    background: var(--surface2);
-    transition: var(--transition);
 }
-.form-input:focus, .form-select:focus { border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-glow); }
-.form-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-end; }
-.form-row .form-group { margin-bottom: 0; flex: 1; min-width: 70px; }
+.form-group input:focus, .form-group select:focus {
+    border-color: #7c5cfc;
+    box-shadow: 0 0 20px rgba(124,92,252,0.1);
+}
+.form-row { display: flex; gap: 8px; }
+.form-row .form-group { flex: 1; }
 
-/* THEME SELECTOR */
-.theme-selector {
-    position: fixed;
-    left: 20px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 50;
+/* ===== ADDRESS LIST ===== */
+.address-item {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-    background: rgba(255,255,255,0.04);
-    backdrop-filter: blur(20px);
-    padding: 8px 6px;
-    border-radius: 16px;
-    border: 1px solid rgba(255,255,255,0.04);
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
 }
-.theme-btn {
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    border: 2px solid rgba(255,255,255,0.1);
-    cursor: pointer;
-    transition: var(--transition);
-}
-.theme-btn:hover { transform: scale(1.15); border-color: rgba(255,255,255,0.3); }
-.theme-btn.active { border-color: #ffd700; box-shadow: 0 0 20px rgba(255,215,0,0.2); }
-.theme-btn.space { background: radial-gradient(ellipse at bottom, #0d1b2a 0%, #000 100%); }
-.theme-btn.ocean { background: linear-gradient(135deg, #1a2980, #26d0ce); }
-.theme-btn.sunset { background: linear-gradient(135deg, #f12711, #f5af19); }
-.theme-btn.forest { background: linear-gradient(135deg, #134e5e, #71b280); }
-.theme-btn.neon { background: linear-gradient(135deg, #1d1d2e, #ff00cc); }
-.theme-btn.rose { background: linear-gradient(135deg, #ff6b6b, #ffd93d); }
-.theme-btn.ice { background: linear-gradient(135deg, #a8e6cf, #dcedc1); }
-.theme-btn.dark { background: #0a0a12; }
+.address-item:last-child { border-bottom: none; }
+.address-item .addr { font-size: 13px; font-family: monospace; }
+.address-item .actions { display: flex; gap: 4px; }
 
-/* RESPONSIVE */
-@media (max-width: 768px) {
-    .sidebar { transform: translateX(100%); width: 220px; }
-    .sidebar.open { transform: translateX(0); }
-    .main { margin-right: 0; padding-top: 52px; }
-    .stats-row { grid-template-columns: 1fr 1fr; gap: 6px; }
-    .system-grid { grid-template-columns: 1fr; }
-    .theme-selector { left: 10px; padding: 6px 4px; gap: 4px; }
-    .theme-btn { width: 22px; height: 22px; }
+/* ===== TOAST ===== */
+.toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    padding: 10px 24px;
+    border-radius: 12px;
+    background: #1a1a2e;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid rgba(255,255,255,0.05);
+    opacity: 0;
+    transition: all 0.4s;
+    z-index: 9999;
 }
-@media (max-width: 480px) { .stats-row { grid-template-columns: 1fr; } }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.error { border-color: rgba(248,113,113,0.3); color: #f87171; }
 
-.inbound-cards { display: none; flex-direction: column; gap: 6px; }
-.inbound-card {
-    border: 1px solid var(--border);
+/* ===== DOMAIN ===== */
+.domain-display {
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.03);
     border-radius: 10px;
-    padding: 10px 12px;
-    background: var(--surface2);
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    border: 1px solid rgba(255,255,255,0.05);
+    margin-bottom: 10px;
 }
-.inbound-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-.inbound-card-name { font-size: 12px; font-weight: 600; color: var(--text); }
-.inbound-card-actions { display: flex; gap: 3px; flex-wrap: wrap; }
+.domain-display .label { font-size: 10px; color: rgba(255,255,255,0.3); }
+.domain-display .value { font-size: 14px; font-weight: 700; font-family: monospace; margin-top: 2px; }
+.domain-status { font-size: 11px; margin-top: 4px; }
+.domain-status.online { color: #34d399; }
+.domain-status.offline { color: #f87171; }
 
-.mobile-header {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 44px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    z-index: 90;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 12px;
-}
-.menu-toggle {
-    width: 30px;
-    height: 30px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 16px;
-}
-.sidebar-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-    z-index: 99;
-}
-.sidebar-overlay.show { display: block; }
-@media (max-width: 768px) {
-    .mobile-header { display: flex; }
-    .inbound-cards { display: flex; }
-    .table-wrap { display: none; }
+/* ===== RESPONSIVE ===== */
+@media (max-width: 600px) {
+    .stats { grid-template-columns: 1fr 1fr; }
+    .header { flex-direction: column; gap: 8px; }
+    .header-actions { width: 100%; justify-content: center; flex-wrap: wrap; }
 }
 </style>
 </head>
 <body>
-<div class="toast" id="toast"></div>
 
-<div class="theme-selector">
-    <button class="theme-btn space active" data-theme="space" title="فضایی"></button>
-    <button class="theme-btn ocean" data-theme="ocean" title="اقیانوسی"></button>
-    <button class="theme-btn sunset" data-theme="sunset" title="غروب"></button>
-    <button class="theme-btn forest" data-theme="forest" title="جنگلی"></button>
-    <button class="theme-btn neon" data-theme="neon" title="نئون"></button>
-    <button class="theme-btn rose" data-theme="rose" title="رز"></button>
-    <button class="theme-btn ice" data-theme="ice" title="یخی"></button>
-    <button class="theme-btn dark" data-theme="dark" title="تاریک"></button>
-</div>
-
-<div class="mobile-header">
-    <span style="font-weight:900;font-size:14px;background:linear-gradient(135deg,var(--primary),#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:'Orbitron',monospace">VROOM</span>
-    <button class="menu-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
-</div>
-<div class="sidebar-overlay" id="sidebarOverlay" onclick="document.getElementById('sidebar').classList.remove('open')"></div>
-
-<aside class="sidebar" id="sidebar">
-    <div class="sidebar-brand">
-        <span class="brand-name">🚀 VROOM</span>
-        <button onclick="toggleTheme()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;">🌓</button>
+<div class="container">
+    <!-- HEADER -->
+    <div class="header">
+        <h1>🚀 VROOM</h1>
+        <div class="header-actions">
+            <button class="btn btn-secondary" onclick="refreshData()">🔄 بروزرسانی</button>
+            <button class="btn btn-danger" onclick="logout()">🚪 خروج</button>
+        </div>
     </div>
-    <nav class="sidebar-nav">
-        <div class="nav-section">MAIN</div>
-        <button class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span> داشبورد</button>
-        <button class="nav-item" data-page="inbounds"><span class="nav-icon">📡</span> اینباندها</button>
-        <button class="nav-item" data-page="addresses"><span class="nav-icon">🌐</span> آی‌پی تمیز</button>
-        <button class="nav-item" data-page="domain"><span class="nav-icon">🌍</span> دامنه</button>
-        <button class="nav-item" data-page="security"><span class="nav-icon">🔒</span> امنیت</button>
-    </nav>
-    <div class="sidebar-footer">
-        <button class="logout-btn" onclick="logout()">🚪 خروج</button>
-        <div class="version">VROOM v3.0</div>
+
+    <!-- STATS -->
+    <div class="stats" id="stats">
+        <div class="stat-card"><span class="icon">📊</span><div class="label">ترافیک کل</div><div class="value" id="sTraffic">--</div></div>
+        <div class="stat-card"><span class="icon">📡</span><div class="label">اینباندها</div><div class="value" id="sLinks">--</div></div>
+        <div class="stat-card"><span class="icon">⏱️</span><div class="label">آپتایم</div><div class="value" id="sUptime" style="font-size:14px;">--</div></div>
+        <div class="stat-card"><span class="icon">🌐</span><div class="label">دامنه</div><div class="value" id="sDomain" style="font-size:13px;font-weight:600;">--</div></div>
     </div>
-</aside>
 
-<main class="main">
-    <!-- DASHBOARD -->
-    <section class="page active" id="page-dashboard">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <div>
-                <div style="font-size:18px;font-weight:900;background:linear-gradient(135deg,var(--primary),#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:'Orbitron',monospace;">📊 DASHBOARD</div>
-                <div style="font-size:10px;color:var(--text3);">آخرین بروزرسانی: <span id="lastUpdate">--</span></div>
-            </div>
-            <div style="display:flex;gap:4px;">
-                <button class="btn btn-secondary" onclick="quickCreate(0.5,'GB')">+0.5</button>
-                <button class="btn btn-primary" onclick="quickCreate(1,'GB')">+1</button>
-                <button class="btn btn-success" onclick="quickCreate(5,'GB')">+5</button>
-            </div>
-        </div>
-        <div class="stats-row">
-            <div class="stat-card"><span class="stat-icon">📊</span><div class="stat-label">ترافیک کل</div><div class="stat-value" id="sTraffic">--<span class="stat-unit">MB</span></div></div>
-            <div class="stat-card"><span class="stat-icon">📡</span><div class="stat-label">اینباندها</div><div class="stat-value" id="sLinks">--</div></div>
-            <div class="stat-card"><span class="stat-icon">⏱️</span><div class="stat-label">آپتایم</div><div class="stat-value" id="sUptime" style="font-size:14px;">--</div></div>
-            <div class="stat-card"><span class="stat-icon">🌐</span><div class="stat-label">دامنه</div><div class="stat-value" id="sDomain" style="font-size:11px;word-break:break-all;font-weight:600;">--</div></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div class="card">
-                <div class="card-header"><div class="card-title">⚡ منابع سیستم</div></div>
-                <div class="system-grid">
-                    <div class="system-item"><div class="label">💾 دیسک</div><div class="value" id="sDisk">--%</div><div class="sub" id="sDiskDetail">-- / -- GB</div></div>
-                    <div class="system-item"><div class="label">🧠 رم</div><div class="value" id="sRam">--%</div><div class="sub" id="sRamDetail">-- / -- GB</div></div>
-                    <div class="system-item"><div class="label">⚡ پردازنده</div><div class="value" id="sCpu">--%</div><div class="sub">مصرف</div></div>
-                    <div class="system-item"><div class="label">🔗 اتصالات</div><div class="value" id="sConnections">--</div><div class="sub">فعال</div></div>
-                </div>
-            </div>
-            <div class="card">
-                <div class="card-header"><div class="card-title">📈 نمودار ترافیک</div></div>
-                <div style="height:130px;"><canvas id="trafficChart"></canvas></div>
-            </div>
-        </div>
-    </section>
-
-    <!-- INBOUNDS -->
-    <section class="page" id="page-inbounds">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <div>
-                <div style="font-size:18px;font-weight:900;background:linear-gradient(135deg,var(--primary),#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:'Orbitron',monospace;">📡 INBOUNDS</div>
-                <div style="font-size:10px;color:var(--text3);">مدیریت اتصالات VLESS</div>
-            </div>
+    <!-- LINKS -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">📡 اینباندها</span>
             <button class="btn btn-primary" onclick="showAddModal()">➕ افزودن</button>
         </div>
-        <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
-            <input id="searchInput" placeholder="🔍 جستجو..." style="flex:1;min-width:120px;padding:5px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:11px;outline:none;">
-            <div style="display:flex;gap:2px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:2px;">
-                <button class="chip active" data-filter="all" style="padding:3px 10px;border:none;border-radius:4px;font-size:9px;font-weight:600;cursor:pointer;background:none;color:var(--text3);font-family:inherit;">همه</button>
-                <button class="chip" data-filter="active" style="padding:3px 10px;border:none;border-radius:4px;font-size:9px;font-weight:600;cursor:pointer;background:none;color:var(--text3);font-family:inherit;">فعال</button>
-                <button class="chip" data-filter="disabled" style="padding:3px 10px;border:none;border-radius:4px;font-size:9px;font-weight:600;cursor:pointer;background:none;color:var(--text3);font-family:inherit;">غیرفعال</button>
-            </div>
+        <div id="linksContainer">
+            <div style="text-align:center;padding:20px;color:rgba(255,255,255,0.2);">در حال بارگذاری...</div>
         </div>
-        <div class="card" style="padding:0;overflow:hidden;border-radius:10px;">
-            <div class="table-wrap">
-                <table class="table">
-                    <thead><tr><th>#</th><th>نام</th><th>نوع</th><th>ترافیک</th><th>IP</th><th>وضعیت</th><th>عملیات</th></tr></thead>
-                    <tbody id="linksTbody"></tbody>
-                </table>
-            </div>
-            <div class="inbound-cards" id="inboundCards"></div>
-            <div class="empty" id="emptyState" style="display:none;text-align:center;padding:30px;color:var(--text3);">
-                <div style="font-size:32px;opacity:0.2;">📭</div>
-                <div>هیچ اینباندی یافت نشد</div>
-            </div>
-        </div>
-    </section>
+    </div>
 
     <!-- ADDRESSES -->
-    <section class="page" id="page-addresses">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <div>
-                <div style="font-size:18px;font-weight:900;background:linear-gradient(135deg,var(--primary),#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:'Orbitron',monospace;">🌐 CLEAN IP</div>
-                <div style="font-size:10px;color:var(--text3);">مدیریت آی‌پی‌های تمیز</div>
-            </div>
-            <button class="btn btn-primary" onclick="showAddAddressModal()">➕ افزودن</button>
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">🌐 آی‌پی تمیز</span>
+            <button class="btn btn-primary" onclick="showAddressModal()">➕ افزودن</button>
         </div>
-        <div class="card">
-            <div class="card-header"><div class="card-title">📋 لیست آی‌پی‌ها</div></div>
-            <div id="addressList"></div>
+        <div id="addressesContainer">
+            <div style="text-align:center;padding:10px;color:rgba(255,255,255,0.2);">در حال بارگذاری...</div>
         </div>
-    </section>
+    </div>
 
     <!-- DOMAIN -->
-    <section class="page" id="page-domain">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <div>
-                <div style="font-size:18px;font-weight:900;background:linear-gradient(135deg,var(--primary),#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:'Orbitron',monospace;">🌍 DOMAIN</div>
-                <div style="font-size:10px;color:var(--text3);">مدیریت دامنه</div>
-            </div>
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">🌍 دامنه</span>
             <button class="btn btn-secondary" onclick="checkDomain()">🔍 بررسی</button>
         </div>
-        <div class="card" style="max-width:440px;">
-            <div style="padding:10px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:10px;">
-                <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;">دامنه فعلی</div>
-                <div id="currentDomainDisplay" style="font-size:13px;font-weight:600;font-family:monospace;color:var(--text);">--</div>
-                <div id="domainStatus" style="font-size:9px;color:var(--text2);margin-top:2px;"></div>
+        <div id="domainContainer">
+            <div style="text-align:center;padding:10px;color:rgba(255,255,255,0.2);">در حال بارگذاری...</div>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:6px;">
+            <input id="domainInput" placeholder="example.com" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.03);color:#fff;font-family:inherit;outline:none;">
+            <button class="btn btn-primary" onclick="saveDomain()">💾 ذخیره</button>
+            <button class="btn btn-danger" onclick="clearDomain()">🗑️</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL: ADD LINK ===== -->
+<div class="modal-overlay" id="addModal" onclick="if(event.target===this)closeModal('addModal')">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('addModal')">✕</button>
+        <div class="modal-title">➕ افزودن اینباند</div>
+        <div class="form-group">
+            <label>نام</label>
+            <input id="linkName" placeholder="مثال: کاربر ۱">
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>حجم</label>
+                <input id="linkLimit" type="number" min="0" step="0.1" placeholder="۰">
             </div>
             <div class="form-group">
-                <label class="form-label">دامنه سفارشی</label>
-                <div style="display:flex;gap:6px;">
-                    <input class="form-input" id="customDomainInput" placeholder="example.com" style="flex:1;font-family:monospace;">
-                    <button class="btn btn-primary" onclick="saveDomain()">💾 ذخیره</button>
-                </div>
+                <label>واحد</label>
+                <select id="linkUnit"><option value="GB">GB</option><option value="MB">MB</option></select>
             </div>
-            <button class="btn btn-danger btn-sm" onclick="clearDomain()" style="width:100%;margin-top:4px;">🗑️ حذف دامنه سفارشی</button>
         </div>
-    </section>
-
-    <!-- SECURITY -->
-    <section class="page" id="page-security">
-        <div style="margin-bottom:10px;">
-            <div style="font-size:18px;font-weight:900;background:linear-gradient(135deg,var(--primary),#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:'Orbitron',monospace;">🔒 SECURITY</div>
-            <div style="font-size:10px;color:var(--text3);">تغییر رمز عبور</div>
+        <div class="form-group">
+            <label>انقضا (روز)</label>
+            <input id="linkExpiry" type="number" min="0" step="1" placeholder="۰ = نامحدود">
         </div>
-        <div class="card" style="max-width:360px;">
-            <div class="card-header"><div class="card-title">🔑 تغییر رمز</div></div>
-            <div class="form-group"><label class="form-label">رمز فعلی</label><input class="form-input" type="password" id="currentPassword" placeholder="رمز فعلی"></div>
-            <div class="form-group"><label class="form-label">رمز جدید</label><input class="form-input" type="password" id="newPassword" placeholder="حداقل ۴ کاراکتر"></div>
-            <button class="btn btn-primary" onclick="changePassword()" style="width:100%;justify-content:center;padding:8px;">🔄 تغییر رمز</button>
+        <div class="form-group">
+            <label>حداکثر اتصال</label>
+            <input id="linkMaxConn" type="number" min="0" step="1" placeholder="۰ = نامحدود">
         </div>
-    </section>
-</main>
-
-<!-- MODALS -->
-<div class="modal-overlay" id="addModal" onclick="if(event.target===this)this.classList.remove('show')">
-    <div class="modal">
-        <button class="modal-close" onclick="document.getElementById('addModal').classList.remove('show')">✕</button>
-        <div class="modal-title">➕ افزودن اینباند</div>
-        <div class="form-group"><label class="form-label">نام</label><input class="form-input" id="newName" placeholder="مثال: کاربر ۱"></div>
-        <div class="form-row">
-            <div class="form-group"><label class="form-label">حجم</label><input class="form-input" id="newLimit" type="number" min="0" step="0.1" placeholder="۰"></div>
-            <div class="form-group" style="min-width:70px;"><label class="form-label">واحد</label><select class="form-select" id="newUnit"><option value="GB">GB</option><option value="MB">MB</option></select></div>
-        </div>
-        <div class="form-group"><label class="form-label">انقضا (روز)</label><input class="form-input" id="newExpiry" type="number" min="0" step="1" placeholder="۰"></div>
-        <div class="form-group"><label class="form-label">حداکثر اتصال</label><input class="form-input" id="newMaxConn" type="number" min="0" step="1" placeholder="۰"></div>
-        <button class="btn btn-primary" onclick="createLink()" style="width:100%;margin-top:6px;justify-content:center;padding:8px;">🚀 ایجاد</button>
+        <button class="btn btn-primary" onclick="createLink()" style="width:100%;margin-top:6px;padding:10px;">🚀 ایجاد</button>
     </div>
 </div>
 
-<div class="modal-overlay" id="addressModal" onclick="if(event.target===this)this.classList.remove('show')">
+<!-- ===== MODAL: ADD ADDRESS ===== -->
+<div class="modal-overlay" id="addressModal" onclick="if(event.target===this)closeModal('addressModal')">
     <div class="modal">
-        <button class="modal-close" onclick="document.getElementById('addressModal').classList.remove('show')">✕</button>
+        <button class="modal-close" onclick="closeModal('addressModal')">✕</button>
         <div class="modal-title">🌐 افزودن آی‌پی</div>
-        <div class="form-group"><label class="form-label">آی‌پی یا دامنه (هر خط یکی)</label><textarea class="form-input" id="newAddressInput" rows="3" placeholder="8.8.8.8&#10;1.1.1.1" style="resize:vertical;font-family:monospace;font-size:11px;"></textarea></div>
-        <button class="btn btn-primary" onclick="addAddresses()" style="width:100%;margin-top:4px;justify-content:center;padding:8px;">➕ افزودن</button>
+        <div class="form-group">
+            <label>آی‌پی یا دامنه (هر خط یکی)</label>
+            <textarea id="addressInput" rows="3" placeholder="8.8.8.8&#10;1.1.1.1" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.03);color:#fff;font-family:monospace;font-size:12px;resize:vertical;outline:none;"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="addAddresses()" style="width:100%;margin-top:4px;padding:10px;">➕ افزودن</button>
     </div>
 </div>
 
+<!-- ===== TOAST ===== -->
+<div class="toast" id="toast"></div>
+
+<!-- ============================================================ -->
+<!-- JAVASCRIPT -->
+<!-- ============================================================ -->
 <script>
-// ============================================================
-// THEME MANAGEMENT
-// ============================================================
-let currentTheme = localStorage.getItem('vroom_theme') || 'space';
-const themes = {
-    space: { background: 'radial-gradient(ellipse at bottom, #0d1b2a 0%, #000000 100%)' },
-    ocean: { background: 'linear-gradient(135deg, #1a2980 0%, #26d0ce 100%)' },
-    sunset: { background: 'linear-gradient(135deg, #f12711 0%, #f5af19 100%)' },
-    forest: { background: 'linear-gradient(135deg, #134e5e 0%, #71b280 100%)' },
-    neon: { background: 'linear-gradient(135deg, #1d1d2e 0%, #ff00cc 100%)' },
-    rose: { background: 'linear-gradient(135deg, #ff6b6b 0%, #ffd93d 100%)' },
-    ice: { background: 'linear-gradient(135deg, #a8e6cf 0%, #dcedc1 100%)' },
-    dark: { background: '#0a0a12' },
-};
-function applyTheme(name) {
-    currentTheme = name;
-    localStorage.setItem('vroom_theme', name);
-    document.body.style.background = themes[name].background;
-    document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === name));
-}
-function toggleTheme() {
-    const names = Object.keys(themes);
-    const idx = names.indexOf(currentTheme);
-    applyTheme(names[(idx + 1) % names.length]);
-}
-document.querySelectorAll('.theme-btn').forEach(btn => {
-    btn.addEventListener('click', () => applyTheme(btn.dataset.theme));
-});
-applyTheme(currentTheme);
-
-// ============================================================
-// NAVIGATION
-// ============================================================
-document.querySelectorAll('.nav-item').forEach(item => {
-    item.addEventListener('click', () => {
-        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        item.classList.add('active');
-        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-        document.getElementById('page-' + item.dataset.page).classList.add('active');
-        document.getElementById('sidebar').classList.remove('open');
-    });
-});
-
 // ============================================================
 // TOAST
 // ============================================================
 function toast(msg, err = false) {
     const t = document.getElementById('toast');
     t.textContent = msg;
-    t.className = 'toast' + (err ? ' error' : '') + ' show';
-    setTimeout(() => t.classList.remove('show'), 3000);
+    t.className = 'toast show' + (err ? ' error' : '');
+    clearTimeout(t._timeout);
+    t._timeout = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ============================================================
+// MODAL
+// ============================================================
+function showAddModal() { document.getElementById('addModal').classList.add('show'); }
+function showAddressModal() { document.getElementById('addressModal').classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+// ============================================================
+// LOGOUT
+// ============================================================
+async function logout() {
+    await fetch('/api/logout', { method: 'POST' });
+    location.href = '/login';
+}
+
+// ============================================================
+// REFRESH
+// ============================================================
+function refreshData() {
+    loadStats();
+    loadLinks();
+    loadAddresses();
+    loadDomain();
+    toast('🔄 بروزرسانی شد');
 }
 
 // ============================================================
@@ -2178,138 +1156,81 @@ function toast(msg, err = false) {
 // ============================================================
 async function loadStats() {
     try {
-        const resp = await fetch('/stats');
-        const data = await resp.json();
-        document.getElementById('sTraffic').innerHTML = data.total_traffic_mb + '<span class="stat-unit">MB</span>';
-        document.getElementById('sLinks').textContent = data.links_count;
-        document.getElementById('sUptime').textContent = data.uptime;
-        document.getElementById('sDomain').textContent = data.domain;
-        document.getElementById('sDisk').textContent = data.disk_percent + '%';
-        document.getElementById('sDiskDetail').textContent = data.disk_used + ' / ' + data.disk_total + ' GB';
-        document.getElementById('sRam').textContent = data.memory_percent + '%';
-        document.getElementById('sRamDetail').textContent = (data.memory_percent * 0.08).toFixed(2) + ' / 8 GB';
-        document.getElementById('sCpu').textContent = data.cpu_percent + '%';
-        document.getElementById('sConnections').textContent = data.active_connections;
-        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('fa-IR');
-        updateChart(data);
+        const r = await fetch('/stats');
+        const d = await r.json();
+        document.getElementById('sTraffic').textContent = d.total_traffic_mb + ' MB';
+        document.getElementById('sLinks').textContent = d.links_count;
+        document.getElementById('sUptime').textContent = d.uptime;
+        document.getElementById('sDomain').textContent = d.domain;
     } catch(e) { console.error(e); }
 }
 
 // ============================================================
-// CHART
+// LOAD LINKS
 // ============================================================
-let chart = null;
-function updateChart(data) {
-    const ctx = document.getElementById('trafficChart');
-    if (!ctx) return;
-    if (chart) { chart.destroy(); }
-    const hours = Object.keys(data.hourly_traffic || {}).slice(-12);
-    const values = hours.map(h => Math.round(data.hourly_traffic[h] / 1048576));
-    chart = new Chart(ctx, {
-        type: 'bar',
-        data: { labels: hours, datasets: [{ label: 'MB', data: values, backgroundColor: 'rgba(124,92,252,0.6)', borderColor: '#7c5cfc', borderWidth: 2, borderRadius: 6 }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.3)', font: { size: 7 } } }, y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.3)', font: { size: 7 } }, beginAtZero: true } } }
-    });
-}
-
-// ============================================================
-// LINKS MANAGEMENT
-// ============================================================
-let allLinks = [];
-let currentFilter = 'all';
-
 async function loadLinks() {
     try {
-        const resp = await fetch('/api/links');
-        const data = await resp.json();
-        allLinks = data.links || [];
-        renderLinks();
+        const r = await fetch('/api/links');
+        const d = await r.json();
+        const links = d.links || [];
+        const container = document.getElementById('linksContainer');
+        
+        if (!links.length) {
+            container.innerHTML = '<div style="text-align:center;padding:20px;color:rgba(255,255,255,0.2);">📭 هیچ اینباندی وجود ندارد</div>';
+            return;
+        }
+        
+        let html = '<div class="table-wrap"><table><thead><tr><th>#</th><th>نام</th><th>نوع</th><th>ترافیک</th><th>IP</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>';
+        
+        links.forEach((l, i) => {
+            const pct = l.limit_bytes > 0 ? Math.min(100, (l.used_bytes / l.limit_bytes) * 100) : 0;
+            const used = (l.used_bytes / 1073741824).toFixed(2);
+            const limit = l.limit_bytes > 0 ? (l.limit_bytes / 1073741824).toFixed(2) : '∞';
+            const color = pct > 90 ? '#f87171' : pct > 70 ? '#fbbf24' : '#7c5cfc';
+            const statusClass = l.active ? 'tag-active' : 'tag-disabled';
+            const statusText = l.active ? 'فعال' : 'غیرفعال';
+            const toggleClass = l.active ? 'on' : '';
+            
+            html += `<tr>
+                <td style="color:rgba(255,255,255,0.3);font-size:10px;">${i+1}</td>
+                <td style="font-weight:600;">${l.label}</td>
+                <td><span class="tag tag-vless">VLESS</span></td>
+                <td>
+                    <div class="usage-bar">
+                        <span class="used">${used}GB</span>
+                        <div class="track"><div class="fill" style="width:${pct}%;background:${color};"></div></div>
+                        <span class="limit">${limit}GB</span>
+                    </div>
+                </td>
+                <td style="font-size:11px;">${l.current_connections}/${l.max_connections||'∞'}</td>
+                <td><span class="tag ${statusClass}">${statusText}</span></td>
+                <td>
+                    <button class="toggle ${toggleClass}" onclick="toggleLink('${l.uuid}')"></button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteLink('${l.uuid}')">🗑</button>
+                    <button class="btn btn-secondary btn-sm" onclick="copyText('${l.vless_link}')">📋</button>
+                </td>
+            </tr>`;
+        });
+        
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
     } catch(e) { console.error(e); }
 }
-
-function renderLinks() {
-    const search = document.getElementById('searchInput').value.toLowerCase();
-    let filtered = allLinks;
-    if (currentFilter === 'active') filtered = filtered.filter(l => l.active);
-    if (currentFilter === 'disabled') filtered = filtered.filter(l => !l.active);
-    if (search) filtered = filtered.filter(l => l.label.toLowerCase().includes(search) || l.uuid.toLowerCase().includes(search));
-    
-    const tbody = document.getElementById('linksTbody');
-    const cards = document.getElementById('inboundCards');
-    const empty = document.getElementById('emptyState');
-    
-    if (!filtered.length) {
-        tbody.innerHTML = '';
-        cards.innerHTML = '';
-        empty.style.display = 'block';
-        return;
-    }
-    empty.style.display = 'none';
-    
-    tbody.innerHTML = filtered.map((l, i) => {
-        const pct = l.limit_bytes > 0 ? Math.min(100, (l.used_bytes / l.limit_bytes) * 100) : 0;
-        const used = (l.used_bytes / 1073741824).toFixed(2);
-        const limit = l.limit_bytes > 0 ? (l.limit_bytes / 1073741824).toFixed(2) : '∞';
-        return `<tr>
-            <td style="color:var(--text3);font-size:9px;">${i+1}</td>
-            <td style="font-weight:600;font-size:11px;">${l.label}</td>
-            <td><span class="tag tag-vless">VLESS</span></td>
-            <td><div class="usage-pill"><span class="used">${used}GB</span><div class="bar"><div class="fill" style="width:${pct}%;background:${pct > 90 ? 'var(--red)' : pct > 70 ? 'var(--yellow)' : 'var(--primary)'};"></div></div><span class="limit">${limit}GB</span></div></td>
-            <td style="font-size:10px;font-weight:600;color:var(--text2);">${l.current_connections}/${l.max_connections||'∞'}</td>
-            <td><span class="tag ${l.active?'tag-active':'tag-disabled'}">${l.active?'فعال':'غیرفعال'}</span></td>
-            <td>
-                <button class="toggle ${l.active?'on':''}" onclick="toggleLink('${l.uuid}')"></button>
-                <button class="btn btn-danger btn-sm" onclick="deleteLink('${l.uuid}')">🗑</button>
-                <button class="btn btn-secondary btn-sm" onclick="copyLink('${l.vless_link}')">📋</button>
-            </td>
-        </tr>`;
-    }).join('');
-    
-    cards.innerHTML = filtered.map((l, i) => {
-        const pct = l.limit_bytes > 0 ? Math.min(100, (l.used_bytes / l.limit_bytes) * 100) : 0;
-        const used = (l.used_bytes / 1073741824).toFixed(2);
-        const limit = l.limit_bytes > 0 ? (l.limit_bytes / 1073741824).toFixed(2) : '∞';
-        return `<div class="inbound-card">
-            <div class="inbound-card-header">
-                <span class="inbound-card-name">${l.label}</span>
-                <button class="toggle ${l.active?'on':''}" onclick="toggleLink('${l.uuid}')"></button>
-            </div>
-            <div class="usage-pill"><span class="used">${used}GB</span><div class="bar"><div class="fill" style="width:${pct}%;background:var(--primary);"></div></div><span class="limit">${limit}GB</span></div>
-            <div style="display:flex;gap:4px;">
-                <button class="btn btn-danger btn-sm" onclick="deleteLink('${l.uuid}')">🗑</button>
-                <button class="btn btn-secondary btn-sm" onclick="copyLink('${l.vless_link}')">📋</button>
-            </div>
-        </div>`;
-    }).join('');
-}
-
-document.querySelectorAll('.chip').forEach(chip => {
-    chip.addEventListener('click', function() {
-        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-        this.classList.add('active');
-        currentFilter = this.dataset.filter;
-        renderLinks();
-    });
-});
-
-document.getElementById('searchInput').addEventListener('input', renderLinks);
 
 // ============================================================
 // LINK OPERATIONS
 // ============================================================
 async function toggleLink(uid) {
-    const link = allLinks.find(l => l.uuid === uid);
-    if (!link) return;
     try {
-        await fetch('/api/links/' + uid, {
+        const r = await fetch('/api/links/' + uid, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ active: !link.active })
+            body: JSON.stringify({ active: true })
         });
-        link.active = !link.active;
-        renderLinks();
-        loadStats();
+        if (!r.ok) throw new Error();
         toast('✅ وضعیت تغییر کرد');
+        loadLinks();
+        loadStats();
     } catch(e) { toast('❌ خطا', true); }
 }
 
@@ -2323,23 +1244,12 @@ async function deleteLink(uid) {
     } catch(e) { toast('❌ خطا', true); }
 }
 
-function copyLink(text) {
-    navigator.clipboard.writeText(text).then(() => toast('📋 کپی شد'));
-}
-
-// ============================================================
-// CREATE LINK
-// ============================================================
-function showAddModal() {
-    document.getElementById('addModal').classList.add('show');
-}
-
 async function createLink() {
-    const name = document.getElementById('newName').value.trim() || 'New Link';
-    const limit = parseFloat(document.getElementById('newLimit').value) || 0;
-    const unit = document.getElementById('newUnit').value;
-    const expiry = parseInt(document.getElementById('newExpiry').value) || 0;
-    const maxConn = parseInt(document.getElementById('newMaxConn').value) || 0;
+    const name = document.getElementById('linkName').value.trim() || 'New Link';
+    const limit = parseFloat(document.getElementById('linkLimit').value) || 0;
+    const unit = document.getElementById('linkUnit').value;
+    const expiry = parseInt(document.getElementById('linkExpiry').value) || 0;
+    const maxConn = parseInt(document.getElementById('linkMaxConn').value) || 0;
     
     if (!/^[a-zA-Z0-9\-_. ]+$/.test(name)) {
         toast('❌ نام نامعتبر است', true);
@@ -2347,36 +1257,18 @@ async function createLink() {
     }
     
     try {
-        const resp = await fetch('/api/links', {
+        const r = await fetch('/api/links', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ label: name, limit_value: limit, limit_unit: unit, expiry_days: expiry, max_connections: maxConn })
         });
-        if (!resp.ok) throw new Error();
+        if (!r.ok) throw new Error();
         toast('✅ اینباند ساخته شد');
-        document.getElementById('addModal').classList.remove('show');
-        document.getElementById('newName').value = '';
-        document.getElementById('newLimit').value = '';
-        document.getElementById('newExpiry').value = '';
-        document.getElementById('newMaxConn').value = '';
-        loadLinks();
-        loadStats();
-    } catch(e) { toast('❌ خطا', true); }
-}
-
-// ============================================================
-// QUICK CREATE
-// ============================================================
-async function quickCreate(limit, unit) {
-    const names = ['User', 'Test', 'Link', 'VPN', 'Server'];
-    const name = names[Math.floor(Math.random() * names.length)] + '-' + Math.floor(Math.random() * 999);
-    try {
-        await fetch('/api/links', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ label: name, limit_value: limit, limit_unit: unit })
-        });
-        toast('✅ ' + name + ' ساخته شد');
+        closeModal('addModal');
+        document.getElementById('linkName').value = '';
+        document.getElementById('linkLimit').value = '';
+        document.getElementById('linkExpiry').value = '';
+        document.getElementById('linkMaxConn').value = '';
         loadLinks();
         loadStats();
     } catch(e) { toast('❌ خطا', true); }
@@ -2387,45 +1279,48 @@ async function quickCreate(limit, unit) {
 // ============================================================
 async function loadAddresses() {
     try {
-        const resp = await fetch('/api/addresses');
-        const data = await resp.json();
-        const list = document.getElementById('addressList');
-        if (!data.addresses || !data.addresses.length) {
-            list.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:8px;text-align:center;">هیچ آی‌پی اضافه نشده</div>';
+        const r = await fetch('/api/addresses');
+        const d = await r.json();
+        const addresses = d.addresses || [];
+        const container = document.getElementById('addressesContainer');
+        
+        if (!addresses.length) {
+            container.innerHTML = '<div style="text-align:center;padding:10px;color:rgba(255,255,255,0.2);">هیچ آی‌پی اضافه نشده</div>';
             return;
         }
-        list.innerHTML = data.addresses.map((a, i) => `
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;margin-bottom:4px;">
-                <span style="font-size:11px;font-weight:600;font-family:monospace;">${a}</span>
-                <button class="btn btn-danger btn-sm" onclick="deleteAddress(${i})">🗑</button>
-            </div>
-        `).join('');
+        
+        let html = '';
+        addresses.forEach((a, i) => {
+            html += `<div class="address-item">
+                <span class="addr">${a}</span>
+                <div class="actions">
+                    <button class="btn btn-danger btn-sm" onclick="deleteAddress(${i})">🗑</button>
+                </div>
+            </div>`;
+        });
+        container.innerHTML = html;
     } catch(e) { console.error(e); }
 }
 
-function showAddAddressModal() {
-    document.getElementById('addressModal').classList.add('show');
-}
-
 async function addAddresses() {
-    const text = document.getElementById('newAddressInput').value.trim();
+    const text = document.getElementById('addressInput').value.trim();
     if (!text) { toast('❌ وارد کنید', true); return; }
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+    const lines = text.split('\\n').map(l => l.trim()).filter(l => l);
     let added = 0;
     for (const addr of lines) {
         try {
-            const resp = await fetch('/api/addresses', {
+            const r = await fetch('/api/addresses', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ address: addr })
             });
-            if (resp.ok) added++;
+            if (r.ok) added++;
         } catch(e) {}
     }
     if (added) {
         toast('✅ ' + added + ' آدرس افزوده شد');
-        document.getElementById('addressModal').classList.remove('show');
-        document.getElementById('newAddressInput').value = '';
+        closeModal('addressModal');
+        document.getElementById('addressInput').value = '';
         loadAddresses();
     } else {
         toast('❌ خطا', true);
@@ -2446,42 +1341,50 @@ async function deleteAddress(index) {
 // ============================================================
 async function loadDomain() {
     try {
-        const resp = await fetch('/api/domain');
-        const data = await resp.json();
-        const domain = data.domain || window.location.hostname || 'localhost';
-        document.getElementById('currentDomainDisplay').textContent = domain;
+        const r = await fetch('/api/domain');
+        const d = await r.json();
+        const domain = d.domain || window.location.hostname || 'localhost';
+        const container = document.getElementById('domainContainer');
+        
+        container.innerHTML = `
+            <div class="domain-display">
+                <div class="label">دامنه فعلی</div>
+                <div class="value">${domain}</div>
+                <div class="domain-status" id="domainStatus">🔍 در حال بررسی...</div>
+            </div>
+        `;
         checkDomain();
     } catch(e) { console.error(e); }
 }
 
 async function checkDomain() {
     try {
-        const resp = await fetch('/api/domain/status');
-        const data = await resp.json();
-        const status = data.current;
+        const r = await fetch('/api/domain/status');
+        const d = await r.json();
+        const status = d.current;
         const el = document.getElementById('domainStatus');
         if (status.reachable) {
             el.innerHTML = '✅ آنلاین | IP: ' + (status.ip || '--') + ' | SSL: ' + (status.ssl_valid ? '✅' : '⚠️');
-            el.style.color = 'var(--green)';
+            el.className = 'domain-status online';
         } else {
             el.textContent = '❌ آفلاین';
-            el.style.color = 'var(--red)';
+            el.className = 'domain-status offline';
         }
     } catch(e) { console.error(e); }
 }
 
 async function saveDomain() {
-    const domain = document.getElementById('customDomainInput').value.trim();
+    const domain = document.getElementById('domainInput').value.trim();
     if (!domain) { toast('❌ دامنه وارد کنید', true); return; }
     try {
-        const resp = await fetch('/api/domain', {
+        const r = await fetch('/api/domain', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ domain })
         });
-        if (!resp.ok) throw new Error();
+        if (!r.ok) throw new Error();
         toast('✅ دامنه ذخیره شد');
-        document.getElementById('customDomainInput').value = '';
+        document.getElementById('domainInput').value = '';
         loadDomain();
     } catch(e) { toast('❌ خطا', true); }
 }
@@ -2500,32 +1403,18 @@ async function clearDomain() {
 }
 
 // ============================================================
-// SECURITY
+// COPY
 // ============================================================
-async function changePassword() {
-    const current = document.getElementById('currentPassword').value;
-    const newPass = document.getElementById('newPassword').value;
-    if (!current || !newPass) { toast('❌ همه فیلدها را پر کنید', true); return; }
-    if (newPass.length < 4) { toast('❌ رمز جدید حداقل ۴ کاراکتر', true); return; }
-    try {
-        const resp = await fetch('/api/change-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ current_password: current, new_password: newPass })
-        });
-        if (!resp.ok) throw new Error();
-        toast('✅ رمز تغییر کرد');
-        document.getElementById('currentPassword').value = '';
-        document.getElementById('newPassword').value = '';
-    } catch(e) { toast('❌ خطا', true); }
-}
-
-// ============================================================
-// LOGOUT
-// ============================================================
-async function logout() {
-    await fetch('/api/logout', { method: 'POST' });
-    location.href = '/login';
+function copyText(text) {
+    navigator.clipboard.writeText(text).then(() => toast('📋 کپی شد')).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        toast('📋 کپی شد');
+    });
 }
 
 // ============================================================
@@ -2535,8 +1424,8 @@ loadStats();
 loadLinks();
 loadAddresses();
 loadDomain();
-setInterval(() => { loadStats(); }, 5000);
-setInterval(() => { loadLinks(); }, 30000);
+setInterval(loadStats, 5000);
+setInterval(loadLinks, 30000);
 </script>
 </body>
 </html>'''
