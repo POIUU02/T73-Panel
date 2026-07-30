@@ -185,7 +185,7 @@ async def handle_callback(cq):
         txt = "🚀 <b>VROOM Bot</b>\nفقط با دکمه‌ها." if lang == "fa" else "🚀 <b>VROOM Bot</b>\nButtons only."
         await tg_edit(chat_id, message_id, txt, reply_markup=main_menu_kb(lang)); return
     if data == "help":
-        txt = "ℹ️ همه کارها با دکمه انجام می‌شه.\nفقط لینک ساب داده می‌شه (نه کانفیگ خام)." if lang == "fa" else "ℹ️ Everything via buttons.\nOnly subscription link is shared (no raw config)."
+        txt = "ℹ️ همه کارها با دکمه.\nساب + صفحه + کانفیگ داده می‌شه." if lang == "fa" else "ℹ️ Everything via buttons.\nSub + page + config are shared."
         await tg_edit(chat_id, message_id, txt, reply_markup=ikb([[(home, "menu")]])); return
     if data == "stats":
         async with LINKS_LOCK:
@@ -209,11 +209,11 @@ async def handle_callback(cq):
             await tg_edit(chat_id, message_id, "❌", reply_markup=ikb([[("📋", "list"), (home, "menu")]])); return
         domain = get_domain()
         sub, page = f"https://{domain}/sub/{uid}", f"https://{domain}/page/{uid}"
-        # ONLY sub + page — no raw config
+        vless = generate_vless_link(uid, remark=f"VROOM-{link['label']}")
         if lang == "fa":
-            t = f"🏷 <b>{link['label']}</b>\n\n📦 {fmt_bytes(link['used_bytes'])}/{fmt_bytes(link['limit_bytes']) if link['limit_bytes'] else '∞'}\n🔌 اتصالات: {count_connections_for_link(uid)}\n\n📥 <b>لینک ساب (برای برنامه‌ها):</b>\n<code>{sub}</code>\n\n🖥 <b>صفحه کاربر:</b>\n<code>{page}</code>"
+            t = f"🏷 <b>{link['label']}</b>\n\n📦 {fmt_bytes(link['used_bytes'])}/{fmt_bytes(link['limit_bytes']) if link['limit_bytes'] else '∞'}\n🔌 اتصالات: {count_connections_for_link(uid)}\n\n📥 <b>لینک ساب:</b>\n<code>{sub}</code>\n\n🖥 <b>صفحه:</b>\n<code>{page}</code>\n\n📋 <b>کانفیگ:</b>\n<code>{vless}</code>"
         else:
-            t = f"🏷 <b>{link['label']}</b>\n\n📦 {fmt_bytes(link['used_bytes'])}/{fmt_bytes(link['limit_bytes']) if link['limit_bytes'] else '∞'}\n🔌 Conns: {count_connections_for_link(uid)}\n\n📥 <b>Sub link (for apps):</b>\n<code>{sub}</code>\n\n🖥 <b>User page:</b>\n<code>{page}</code>"
+            t = f"🏷 <b>{link['label']}</b>\n\n📦 {fmt_bytes(link['used_bytes'])}/{fmt_bytes(link['limit_bytes']) if link['limit_bytes'] else '∞'}\n🔌 Conns: {count_connections_for_link(uid)}\n\n📥 <b>Sub:</b>\n<code>{sub}</code>\n\n🖥 <b>Page:</b>\n<code>{page}</code>\n\n📋 <b>Config:</b>\n<code>{vless}</code>"
         await tg_edit(chat_id, message_id, t, reply_markup=ikb([[("🗑", f"delask:{uid}"), ("📋", "list")], [(home, "menu")]])); return
     if data.startswith("delask:"):
         uid = data[7:]
@@ -234,7 +234,11 @@ async def handle_callback(cq):
         uid = data[8:]
         sub = f"https://{get_domain()}/sub/{uid}"
         page = f"https://{get_domain()}/page/{uid}"
-        t = f"📥 <b>ساب:</b>\n<code>{sub}</code>\n\n🖥 <b>صفحه:</b>\n<code>{page}</code>" if lang == "fa" else f"📥 <b>Sub:</b>\n<code>{sub}</code>\n\n🖥 <b>Page:</b>\n<code>{page}</code>"
+        vless = generate_vless_link(uid, remark=f"VROOM-{uid}")
+        if lang == "fa":
+            t = f"📥 <b>ساب:</b>\n<code>{sub}</code>\n\n🖥 <b>صفحه:</b>\n<code>{page}</code>\n\n📋 <b>کانفیگ:</b>\n<code>{vless}</code>"
+        else:
+            t = f"📥 <b>Sub:</b>\n<code>{sub}</code>\n\n🖥 <b>Page:</b>\n<code>{page}</code>\n\n📋 <b>Config:</b>\n<code>{vless}</code>"
         await tg_send(chat_id, t); return
     if data == "create_start":
         prev = TG_STATE.get(user_id) or {}
@@ -271,11 +275,11 @@ async def handle_callback(cq):
         TG_STATE[user_id] = {"lang": keep_lang}
         domain = get_domain()
         sub, page = f"https://{domain}/sub/{label}", f"https://{domain}/page/{label}"
-        # ONLY sub + page — no raw config download
+        vless = generate_vless_link(label, remark=f"VROOM-{label}")
         if lang == "fa":
-            t = f"✅ <b>ساخته شد</b>\n\n🏷 <code>{label}</code>\n📦 <code>{lim if lim else '∞'} GB</code>\n📅 <code>{int(days) if days else '∞'} روز</code>\n\n📥 <b>لینک ساب:</b>\n<code>{sub}</code>\n\n🖥 <b>صفحه:</b>\n<code>{page}</code>"
+            t = f"✅ <b>ساخته شد</b>\n\n🏷 <code>{label}</code>\n📦 <code>{lim if lim else '∞'} GB</code>\n📅 <code>{int(days) if days else '∞'} روز</code>\n\n📥 <b>لینک ساب:</b>\n<code>{sub}</code>\n\n🖥 <b>صفحه:</b>\n<code>{page}</code>\n\n📋 <b>کانفیگ:</b>\n<code>{vless}</code>"
         else:
-            t = f"✅ <b>Created</b>\n\n🏷 <code>{label}</code>\n📦 <code>{lim if lim else '∞'} GB</code>\n📅 <code>{int(days) if days else '∞'}d</code>\n\n📥 <b>Sub:</b>\n<code>{sub}</code>\n\n🖥 <b>Page:</b>\n<code>{page}</code>"
+            t = f"✅ <b>Created</b>\n\n🏷 <code>{label}</code>\n📦 <code>{lim if lim else '∞'} GB</code>\n📅 <code>{int(days) if days else '∞'}d</code>\n\n📥 <b>Sub:</b>\n<code>{sub}</code>\n\n🖥 <b>Page:</b>\n<code>{page}</code>\n\n📋 <b>Config:</b>\n<code>{vless}</code>"
         await tg_edit(chat_id, message_id, t, reply_markup=ikb([[("➕", "create_start"), ("📋", "list")], [(home, "menu")]])); return
 
 async def handle_tg_message(msg):
@@ -604,13 +608,21 @@ background-image:radial-gradient(ellipse at 12% 0%,rgba(155,138,251,.14),transpa
 .btns{{display:flex;gap:7px}}.btns button{{flex:1;padding:11px;border:none;border-radius:11px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit}}
 .b1{{background:linear-gradient(135deg,var(--g),var(--g2),#f472b6);color:#0a0a10;box-shadow:0 4px 16px rgba(255,215,0,.25)}}
 .b2{{background:rgba(255,215,0,.08);color:var(--g);border:1px solid var(--b)}}
-.apps{{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}}
-@media(max-width:380px){{.apps{{grid-template-columns:repeat(2,1fr)}}}}
-.app{{background:rgba(255,255,255,.04);border:1px solid var(--b);border-radius:14px;padding:10px 4px 8px;text-align:center;cursor:pointer;position:relative}}
-.app-photo{{width:52px;height:52px;margin:0 auto 6px;border-radius:14px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center}}.app-photo svg{{width:32px;height:32px}}.app-os{{font-size:9px;color:var(--m);margin-top:2px;font-weight:600}}
-.app-img svg{{width:100%;height:100%;display:block}}.app-name{{font-size:10px;font-weight:600;color:var(--m)}}
-.badge{{position:absolute;top:5px;right:5px;font-size:8px;background:rgba(255,215,0,.2);color:var(--g);padding:1px 4px;border-radius:5px;font-weight:700}}
-.chips{{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}}.chip{{padding:3px 9px;border-radius:16px;font-size:10px;border:1px solid var(--b);color:var(--m);font-weight:600}}
+.easy-title{{font-size:13px;font-weight:800;margin-bottom:10px;color:var(--t)}}
+.plat{{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:8px;margin-bottom:10px;scrollbar-width:none}}
+.plat::-webkit-scrollbar{{display:none}}
+.plat-btn{{flex-shrink:0;padding:7px 14px;border-radius:20px;border:1px solid var(--b);background:rgba(255,255,255,.03);color:var(--m);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:.2s}}
+.plat-btn.on{{background:linear-gradient(135deg,var(--g),var(--g2));color:#0a0a10;border-color:transparent;box-shadow:0 4px 14px rgba(232,197,71,.25)}}
+.apps{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}}
+@media(max-width:400px){{.apps{{grid-template-columns:repeat(3,1fr)}}}}
+.app{{background:rgba(255,255,255,.04);border:1px solid var(--b);border-radius:16px;padding:12px 6px 10px;text-align:center;cursor:pointer;position:relative;transition:.2s}}
+.app:active{{transform:scale(.96)}}
+.app-photo{{width:54px;height:54px;margin:0 auto 7px;border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;background:#1a1a2e}}
+.app-photo img{{width:100%;height:100%;object-fit:cover;display:block}}
+.app-name{{font-size:10px;font-weight:700;color:var(--t)}}
+.app-os{{font-size:9px;color:var(--m);margin-top:2px}}
+.badge{{position:absolute;top:6px;right:6px;font-size:9px;background:rgba(232,197,71,.22);color:var(--g);padding:2px 5px;border-radius:6px;font-weight:800}}
+.chips{{display:flex;gap:5px;flex-wrap:wrap;margin-top:10px}}.chip{{padding:4px 10px;border-radius:16px;font-size:10px;border:1px solid var(--b);color:var(--m);font-weight:600}}
 footer{{text-align:center;font-size:11px;color:var(--m);margin-top:6px;padding-top:9px;border-top:1px solid var(--b)}}
 footer b{{background:linear-gradient(135deg,var(--g),var(--ac));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
 .toast{{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(70px);background:var(--card);padding:11px 20px;border-radius:11px;font-size:12px;color:var(--g);opacity:0;transition:.3s;border:1px solid var(--b);z-index:9999;font-weight:700}}
@@ -658,18 +670,17 @@ footer b{{background:linear-gradient(135deg,var(--g),var(--ac));-webkit-backgrou
   </div>
 </div>
 <div class="card">
-  <div class="h3"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg><span data-i="apps">برنامه‌ها</span></div>
-  <div class="apps">
-    <div class="app" onclick="oa('hiddify')"><span class="badge">＋</span><div class="app-photo"><img src="https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/assets/images/app_icon.png" alt="Hiddify" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(145deg,#5b6cff,#3a4de8)'"/></div><div class="app-name">Hiddify</div><div class="app-os">Android · iOS</div></div>
-    <div class="app" onclick="oa('v2rayng')"><span class="badge">＋</span><div class="app-photo"><img src="https://raw.githubusercontent.com/2dust/v2rayNG/master/V2rayNG/app/src/main/ic_launcher-playstore.png" alt="v2rayNG" onerror="this.src='https://cdn.jsdelivr.net/gh/2dust/v2rayNG@master/V2rayNG/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png'"/></div><div class="app-name">v2rayNG</div><div class="app-os">Android</div></div>
-    <div class="app" onclick="oa('v2box')"><span class="badge">＋</span><div class="app-photo"><img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/8e/2a/3c/8e2a3c5a-1c0e-0e5e-8c5e-0e5e8c5e0e5e/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/120x120bb.png" alt="V2Box" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(145deg,#8b7cf7,#5b4cdb)'"/></div><div class="app-name">V2Box</div><div class="app-os">iOS</div></div>
-    <div class="app" onclick="oa('singbox')"><span class="badge">＋</span><div class="app-photo"><img src="https://raw.githubusercontent.com/SagerNet/sing-box/dev-next/docs/assets/icon.png" alt="Sing-box" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(145deg,#26d0a8,#00a884)'"/></div><div class="app-name">Sing-box</div><div class="app-os">Multi</div></div>
-    <div class="app" onclick="oa('shadowrocket')"><span class="badge">＋</span><div class="app-photo"><img src="https://is1-ssl.mzstatic.com/image/thumb/Purple126/v4/8c/8c/8c/8c8c8c8c-8c8c-8c8c-8c8c-8c8c8c8c8c8c/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/120x120bb.png" alt="Shadowrocket" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(145deg,#ff6bcb,#d63384)'"/></div><div class="app-name">Shadowrocket</div><div class="app-os">iOS</div></div>
-    <div class="app" onclick="oa('clash')"><span class="badge">＋</span><div class="app-photo"><img src="https://raw.githubusercontent.com/MetaCubeX/ClashMetaForAndroid/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" alt="Clash" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(145deg,#ff6b6b,#c0392b)'"/></div><div class="app-name">Clash Meta</div><div class="app-os">Android</div></div>
-    <div class="app" onclick="oa('streisand')"><span class="badge">＋</span><div class="app-photo"><img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/streisand/120x120bb.png" alt="Streisand" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(145deg,#ff8a80,#e53935)'"/></div><div class="app-name">Streisand</div><div class="app-os">iOS</div></div>
-    <div class="app" onclick="oa('nekoray')"><span class="badge">＋</span><div class="app-photo"><img src="https://raw.githubusercontent.com/MatsuriDayo/nekoray/main/res/public/icon.png" alt="NekoRay" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(145deg,#ffb347,#f39c12)'"/></div><div class="app-name">NekoRay</div><div class="app-os">Desktop</div></div>
+  <div class="easy-title" data-i="easy">Easy Import</div>
+  <div class="plat" id="platBar">
+    <button type="button" class="plat-btn on" data-p="android" onclick="showPlat('android',this)">Android</button>
+    <button type="button" class="plat-btn" data-p="ios" onclick="showPlat('ios',this)">iOS</button>
+    <button type="button" class="plat-btn" data-p="windows" onclick="showPlat('windows',this)">Windows</button>
+    <button type="button" class="plat-btn" data-p="macos" onclick="showPlat('macos',this)">macOS</button>
+    <button type="button" class="plat-btn" data-p="linux" onclick="showPlat('linux',this)">Linux</button>
+    <button type="button" class="plat-btn" data-p="tv" onclick="showPlat('tv',this)">Android TV</button>
+    <button type="button" class="plat-btn" data-p="appletv" onclick="showPlat('appletv',this)">Apple TV</button>
   </div>
-  <div class="chips"><span class="chip">Android</span><span class="chip">iOS</span><span class="chip">Windows</span><span class="chip">macOS</span><span class="chip">Linux</span></div>
+  <div class="apps" id="appsGrid"></div>
 </div>
 <footer>Powered by <b>VROOM</b></footer>
 </div>
@@ -680,27 +691,75 @@ footer b{{background:linear-gradient(135deg,var(--g),var(--ac));-webkit-backgrou
 <script>
 const SUB='{sub_url}',CFG=`{server_link}`,P={percent};
 const ST={{fa:'{status_fa}',en:'{status_en}'}}, DY={{fa:'{days_fa}',en:'{days_en}'}};
-const I18N={{fa:{{title:'Subscription',online:'سرور آنلاین',conn:'اتصالات',used:'مصرفی',status:'وضعیت',left:'باقی',subLink:'لینک ساب (برنامه‌ها)',copy:'کپی',expire:'انقضا',days:'باقی',cfg:'کانفیگ و QR',add:'＋ اضافه',share:'اشتراک',apps:'برنامه‌ها'}},
-en:{{title:'Subscription',online:'Server Online',conn:'Connections',used:'Used',status:'Status',left:'Left',subLink:'Sub link (for apps)',copy:'Copy',expire:'Expiry',days:'Left',cfg:'Config & QR',add:'＋ Add',share:'Share',apps:'Apps'}}}};
+const I18N={{fa:{{title:'Subscription',online:'سرور آنلاین',conn:'اتصالات',used:'مصرفی',status:'وضعیت',left:'باقی',subLink:'لینک ساب (برنامه‌ها)',copy:'کپی',expire:'انقضا',days:'باقی',cfg:'کانفیگ و QR',add:'＋ اضافه اشتراک',share:'اشتراک',easy:'Easy Import'}},
+en:{{title:'Subscription',online:'Server Online',conn:'Connections',used:'Used',status:'Status',left:'Left',subLink:'Sub link (for apps)',copy:'Copy',expire:'Expiry',days:'Left',cfg:'Config & QR',add:'＋ Add Sub',share:'Share',easy:'Easy Import'}}}};
 let lang=localStorage.getItem('vroom_lang')||'fa', dn=localStorage.getItem('vroom_dn')||'dark';
 function setLang(l){{lang=l;localStorage.setItem('vroom_lang',l);document.documentElement.lang=l;document.documentElement.dir=l==='fa'?'rtl':'ltr';
 document.getElementById('langFa').classList.toggle('on',l==='fa');document.getElementById('langEn').classList.toggle('on',l==='en');
 const t=I18N[l];document.querySelectorAll('[data-i]').forEach(el=>{{const k=el.getAttribute('data-i');if(t[k])el.textContent=t[k]}});
 document.getElementById('stTxt').textContent=ST[l];document.getElementById('st2').textContent=ST[l];document.getElementById('daysT').textContent=DY[l]}}
 function toggleDN(){{dn=dn==='dark'?'light':'dark';localStorage.setItem('vroom_dn',dn);document.documentElement.setAttribute('data-theme',dn)}}
-const apps={{hiddify:{{s:'hiddify://import/'+encodeURIComponent(SUB),d:'https://github.com/hiddify/hiddify-app/releases/latest'}},
-v2rayng:{{s:'v2rayng://install-config?url='+encodeURIComponent(SUB),d:'https://github.com/2dust/v2rayNG/releases/latest'}},
-v2box:{{s:'v2box://install-config?url='+encodeURIComponent(SUB),d:'https://apps.apple.com/app/v2box-v2ray-client/id6446814690'}},
-singbox:{{s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB),d:'https://github.com/SagerNet/sing-box/releases/latest'}},
-shadowrocket:{{s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_'),d:'https://apps.apple.com/app/shadowrocket/id932747118'}},
-clash:{{s:'clash://install-config?url='+encodeURIComponent(SUB),d:'https://github.com/MetaCubeX/ClashMetaForAndroid/releases/latest'}},
-streisand:{{s:'streisand://import/'+encodeURIComponent(SUB),d:'https://apps.apple.com/app/streisand/id6450534064'}},
-nekoray:{{s:'',d:'https://github.com/MatsuriDayo/nekoray/releases/latest'}}}};
-function oa(n){{const a=apps[n];if(!a)return;if(a.s){{const t=Date.now();location.href=a.s;setTimeout(()=>{{if(Date.now()-t<1600){{toast('→ download');setTimeout(()=>open(a.d,'_blank'),500)}}}},1300)}}else open(a.d,'_blank')}}
+
+/* App catalog by platform — real photos + import schemes only (no download forced) */
+const CATALOG={{
+  android:[
+    {{id:'hiddify',name:'Hiddify',img:'https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayng',name:'v2rayNG',img:'https://raw.githubusercontent.com/2dust/v2rayNG/master/V2rayNG/app/src/main/ic_launcher-playstore.png',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'clash',name:'Clash Meta',img:'https://raw.githubusercontent.com/MetaCubeX/ClashMetaForAndroid/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png',bg:'#D63031',s:'clash://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'surfboard',name:'Surfboard',img:'',bg:'#00B894',s:'',copy:true}}
+  ],
+  ios:[
+    {{id:'hiddify',name:'Hiddify',img:'https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2box',name:'V2Box',img:'',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'shadowrocket',name:'Shadowrocket',img:'',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}},
+    {{id:'streisand',name:'Streisand',img:'',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}}
+  ],
+  windows:[
+    {{id:'hiddify',name:'Hiddify',img:'https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayn',name:'v2rayN',img:'',bg:'#0984E3',s:'',copy:true}},
+    {{id:'nekoray',name:'NekoRay',img:'',bg:'#F39C12',s:'',copy:true}},
+    {{id:'singbox',name:'Sing-box',img:'',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+  ],
+  macos:[
+    {{id:'hiddify',name:'Hiddify',img:'https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2box',name:'V2Box',img:'',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'singbox',name:'Sing-box',img:'',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+  ],
+  linux:[
+    {{id:'hiddify',name:'Hiddify',img:'https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'nekoray',name:'NekoRay',img:'',bg:'#F39C12',s:'',copy:true}},
+    {{id:'singbox',name:'Sing-box',img:'',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+  ],
+  tv:[
+    {{id:'hiddify',name:'Hiddify TV',img:'https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayng',name:'v2rayNG',img:'https://raw.githubusercontent.com/2dust/v2rayNG/master/V2rayNG/app/src/main/ic_launcher-playstore.png',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}}
+  ],
+  appletv:[
+    {{id:'streisand',name:'Streisand',img:'',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}},
+    {{id:'shadowrocket',name:'Shadowrocket',img:'',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}}
+  ]
+}};
+
+function showPlat(p,btn){{
+  document.querySelectorAll('.plat-btn').forEach(b=>b.classList.remove('on'));
+  if(btn)btn.classList.add('on');
+  const list=CATALOG[p]||[];
+  document.getElementById('appsGrid').innerHTML=list.map(a=>{{
+    const img=a.img?`<img src="${{a.img}}" alt="${{a.name}}" onerror="this.remove()"/>`:'';
+    return `<div class="app" onclick="oaApp('${{a.id}}','${{p}}')"><span class="badge">＋</span><div class="app-photo" style="background:${{a.bg}}">${{img}}</div><div class="app-name">${{a.name}}</div></div>`;
+  }}).join('');
+}}
+function oaApp(id,plat){{
+  const a=(CATALOG[plat]||[]).find(x=>x.id===id);
+  if(!a)return;
+  if(a.copy||!a.s){{cp(SUB);toast(lang==='fa'?'لینک ساب کپی شد — در برنامه Import کن':'Sub copied — import in app');return}}
+  try{{location.href=a.s}}catch(e){{}}
+  setTimeout(()=>{{cp(SUB);toast(lang==='fa'?'اگر باز نشد، ساب کپی شد':'If app did not open, sub was copied')}},900);
+}}
 function cp(t){{navigator.clipboard?navigator.clipboard.writeText(t).then(()=>toast(lang==='fa'?'کپی شد':'Copied')):(()=>{{const i=document.createElement('input');i.value=t;document.body.appendChild(i);i.select();document.execCommand('copy');document.body.removeChild(i);toast('OK')}})()}}
 function share(){{navigator.share?navigator.share({{title:'VROOM',url:SUB}}).catch(()=>cp(SUB)):cp(SUB)}}
 function toast(m){{const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2400)}}
-document.documentElement.setAttribute('data-theme',dn);setLang(lang);
+document.documentElement.setAttribute('data-theme',dn);setLang(lang);showPlat('android',document.querySelector('.plat-btn'));
 setTimeout(()=>{{document.getElementById('rg').style.background=`conic-gradient(#4f8cff 0% ${{P}}%,rgba(30,41,59,.85) ${{P}}% 100%)`;document.getElementById('bf').style.width=P+'%';document.getElementById('pct').textContent=P+'%'}},250);
 </script></body></html>"""
     return HTMLResponse(content=html)
@@ -845,15 +904,15 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 <aside class="side">
 <div class="brand">VROOM</div>
 <div class="lang"><button type="button" id="lFa" class="on" onclick="setL('fa')">FA</button><button type="button" id="lEn" onclick="setL('en')">EN</button></div>
-<button class="ni on" data-p="dash">📊 Dashboard</button>
-<button class="ni" data-p="links">📡 Inbounds</button>
-<button class="ni" data-p="conn">🔗 Connections</button>
-<button class="ni" data-p="addr">🌐 Clean IP</button>
-<button class="ni" data-p="tg">🤖 Telegram</button>
-<button class="ni" data-p="domain">🌍 Domain</button>
-<button class="ni" data-p="sec">🔒 Security</button>
+<button class="ni on" data-p="dash" data-fa="📊 داشبورد" data-en="📊 Dashboard">📊 داشبورد</button>
+<button class="ni" data-p="links" data-fa="📡 اینباندها" data-en="📡 Inbounds">📡 اینباندها</button>
+<button class="ni" data-p="conn" data-fa="🔗 اتصالات" data-en="🔗 Connections">🔗 اتصالات</button>
+<button class="ni" data-p="addr" data-fa="🌐 آی‌پی تمیز" data-en="🌐 Clean IP">🌐 آی‌پی تمیز</button>
+<button class="ni" data-p="tg" data-fa="🤖 ربات تلگرام" data-en="🤖 Telegram">🤖 ربات تلگرام</button>
+<button class="ni" data-p="domain" data-fa="🌍 دامنه" data-en="🌍 Domain">🌍 دامنه</button>
+<button class="ni" data-p="sec" data-fa="🔒 امنیت" data-en="🔒 Security">🔒 امنیت</button>
 <div style="flex:1"></div>
-<button class="ni" style="color:var(--rd)" onclick="fetch('/api/logout',{method:'POST'}).then(()=>location='/login')">Logout</button>
+<button class="ni" style="color:var(--rd)" data-fa="خروج" data-en="Logout" onclick="fetch('/api/logout',{method:'POST'}).then(()=>location='/login')">خروج</button>
 </aside>
 <main class="main">
 <section class="page on" id="p-dash">
@@ -918,7 +977,7 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 <div class="toast" id="toast"></div>
 <script>
 const $=s=>document.querySelector(s);let LANG=localStorage.getItem('vroom_dl')||'fa';
-function setL(l){LANG=l;localStorage.setItem('vroom_dl',l);document.documentElement.lang=l;document.documentElement.dir=l==='fa'?'rtl':'ltr';$('#lFa').classList.toggle('on',l==='fa');$('#lEn').classList.toggle('on',l==='en')}
+function setL(l){LANG=l;localStorage.setItem('vroom_dl',l);document.documentElement.lang=l;document.documentElement.dir=l==='fa'?'rtl':'ltr';$('#lFa').classList.toggle('on',l==='fa');$('#lEn').classList.toggle('on',l==='en');document.querySelectorAll('[data-fa]').forEach(el=>{el.textContent=l==='fa'?el.dataset.fa:el.dataset.en})}
 document.querySelectorAll('.ni[data-p]').forEach(el=>el.onclick=()=>go(el.dataset.p));
 function go(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));document.getElementById('p-'+id)?.classList.add('on');
 document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('on',n.dataset.p===id));document.querySelector('.side')?.classList.remove('open');
