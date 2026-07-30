@@ -916,8 +916,10 @@ header{{display:flex;justify-content:space-between;align-items:center;margin-bot
 .add{{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#0a0a10}}.share-btn{{background:rgba(255,215,0,.1);color:var(--gold);border:1px solid rgba(255,215,0,.25)}}
 .quick-grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}}
 @media(max-width:400px){{.quick-grid{{grid-template-columns:repeat(2,1fr)}}}}
-.quick-item{{background:rgba(255,255,255,.03);border:1px solid rgba(255,215,0,.09);border-radius:14px;padding:10px 4px;text-align:center;cursor:pointer;position:relative}}
-.quick-item .q-icon{{width:40px;height:40px;margin:0 auto 5px;border-radius:10px;overflow:hidden}}.quick-item .q-icon svg{{width:100%;height:100%}}
+.quick-item{{background:rgba(255,255,255,.03);border:1px solid rgba(255,215,0,.09);border-radius:14px;padding:10px 4px;text-align:center;cursor:pointer;position:relative;transition:all 0.2s}}
+.quick-item:hover{{background:rgba(255,215,0,.06);border-color:rgba(255,215,0,.2)}}
+.quick-item .q-icon{{width:45px;height:45px;margin:0 auto 5px;border-radius:12px;overflow:hidden;background:#fff;display:flex;align-items:center;justify-content:center}}
+.quick-item .q-icon img{{width:100%;height:100%;object-fit:cover}}
 .quick-item .q-name{{font-size:10px;font-weight:600;color:rgba(255,255,255,.55)}}
 .quick-item .q-badge{{position:absolute;top:4px;right:4px;font-size:8px;background:rgba(255,215,0,.18);color:var(--gold);padding:1px 4px;border-radius:4px}}
 .history-bars{{display:flex;align-items:flex-end;justify-content:space-between;height:64px;gap:5px}}
@@ -982,12 +984,28 @@ footer b{{background:linear-gradient(135deg,var(--gold),var(--gold2));-webkit-ba
   </div>
 </div>
 <div class="card">
-  <h3>ابزارهای سریع</h3>
+  <h3>نصب سریع روی دستگاه</h3>
   <div class="quick-grid">
-    <div class="quick-item" onclick="openApp('hiddify')"><span class="q-badge">+</span><div class="q-icon"><svg viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#455FE9"/><path d="M14 34V14h8.8c4.1 0 6.7 2.2 6.7 5.6 0 2.2-1.1 3.9-3.1 4.7L32 34h-5.6l-4.6-7.8H19V34h-5zm5-12h2.8c1.8 0 2.8-.8 2.8-2.2s-1-2.2-2.8-2.2H19v4.4z" fill="#fff"/></svg></div><span class="q-name">Hiddify</span></div>
-    <div class="quick-item" onclick="openApp('v2rayng')"><span class="q-badge">+</span><div class="q-icon"><svg viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#1E88E5"/><path d="M24 10L12 18v12l12 8 12-8V18L24 10zm0 5.5l7.5 5v7l-7.5 5-7.5-5v-7l7.5-5z" fill="#fff"/><circle cx="24" cy="24" r="3.5" fill="#fff"/></svg></div><span class="q-name">v2rayNG</span></div>
-    <div class="quick-item" onclick="openApp('v2box')"><span class="q-badge">+</span><div class="q-icon"><svg viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#6C5CE7"/><text x="24" y="31" text-anchor="middle" fill="#fff" font-size="15" font-weight="800" font-family="Arial">V2</text></svg></div><span class="q-name">V2Box</span></div>
-    <div class="quick-item" onclick="openApp('clash')"><span class="q-badge">+</span><div class="q-icon"><svg viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#D63031"/><circle cx="24" cy="24" r="11" fill="none" stroke="#fff" stroke-width="3.5"/><circle cx="24" cy="24" r="5" fill="#fff"/></svg></div><span class="q-name">Clash</span></div>
+    <div class="quick-item" onclick="openApp('hiddify')">
+      <span class="q-badge">+</span>
+      <div class="q-icon"><img src="https://raw.githubusercontent.com/hiddify/hiddify-app/main/docs/logo.png" alt="Hiddify" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22%3E%3Crect width=%2248%22 height=%2248%22 rx=%2212%22 fill=%22%23455FE9%22/%3E%3Ctext x=%2224%22 y=%2231%22 text-anchor=%22middle%22 fill=%22%23fff%22 font-size=%2216%22 font-weight=%22800%22 font-family=%22Arial%22%3EH%3C/text%3E%3C/svg%3E'"></div>
+      <span class="q-name">Hiddify</span>
+    </div>
+    <div class="quick-item" onclick="openApp('v2rayng')">
+      <span class="q-badge">+</span>
+      <div class="q-icon"><img src="https://raw.githubusercontent.com/2dust/v2rayNG/master/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png" alt="v2rayNG" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22%3E%3Crect width=%2248%22 height=%2248%22 rx=%2212%22 fill=%22%231E88E5%22/%3E%3Ctext x=%2224%22 y=%2231%22 text-anchor=%22middle%22 fill=%22%23fff%22 font-size=%2216%22 font-weight=%22800%22 font-family=%22Arial%22%3EV%3C/text%3E%3C/svg%3E'"></div>
+      <span class="q-name">v2rayNG</span>
+    </div>
+    <div class="quick-item" onclick="openApp('v2box')">
+      <span class="q-badge">+</span>
+      <div class="q-icon"><img src="https://is1-ssl.mzstatic.com/image/thumb/Purple116/v4/8e/9b/9b/8e9b9b8e-9b8e-9b8e-9b8e-9b8e9b9b8e9b/AppIcon-0-0-1x_U007emarketing-0-0-0-7-0-0-sRGB-0-0-0-GLES2_U002c0-512MB-85-220-0-0.png/512x512bb.jpg" alt="V2Box" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22%3E%3Crect width=%2248%22 height=%2248%22 rx=%2212%22 fill=%22%236C5CE7%22/%3E%3Ctext x=%2224%22 y=%2231%22 text-anchor=%22middle%22 fill=%22%23fff%22 font-size=%2216%22 font-weight=%22800%22 font-family=%22Arial%22%3EV2%3C/text%3E%3C/svg%3E'"></div>
+      <span class="q-name">V2Box</span>
+    </div>
+    <div class="quick-item" onclick="openApp('clash')">
+      <span class="q-badge">+</span>
+      <div class="q-icon"><img src="https://raw.githubusercontent.com/MetaCubeX/ClashMetaForAndroid/master/app/src/main/ic_launcher-playstore.png" alt="Clash" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22%3E%3Crect width=%2248%22 height=%2248%22 rx=%2212%22 fill=%22%23D63031%22/%3E%3Ctext x=%2224%22 y=%2231%22 text-anchor=%22middle%22 fill=%22%23fff%22 font-size=%2216%22 font-weight=%22800%22 font-family=%22Arial%22%3EC%3C/text%3E%3C/svg%3E'"></div>
+      <span class="q-name">Clash</span>
+    </div>
   </div>
 </div>
 <footer>Powered by <b>VROOM</b></footer>
@@ -1005,7 +1023,12 @@ footer b{{background:linear-gradient(135deg,var(--gold),var(--gold2));-webkit-ba
 </div>
 <script>
 const SUB_URL='{sub_url}', CONFIG=`{server_link}`, PERCENT={percent}, HISTORY={json.dumps(history_vals)};
-const apps={{hiddify:{{s:'hiddify://import/'+encodeURIComponent(SUB_URL),d:'https://github.com/hiddify/hiddify-app/releases/latest'}},v2rayng:{{s:'v2rayng://install-config?url='+encodeURIComponent(SUB_URL),d:'https://github.com/2dust/v2rayNG/releases/latest'}},v2box:{{s:'v2box://install-config?url='+encodeURIComponent(SUB_URL),d:'https://apps.apple.com/app/v2box-v2ray-client/id6446814690'}},clash:{{s:'clash://install-config?url='+encodeURIComponent(SUB_URL),d:'https://github.com/MetaCubeX/ClashMetaForAndroid/releases/latest'}}}};
+const apps={{
+hiddify:{{s:'hiddify://import/'+encodeURIComponent(SUB_URL),d:'https://github.com/hiddify/hiddify-app/releases/latest'}},
+v2rayng:{{s:'v2rayng://install-config?url='+encodeURIComponent(SUB_URL),d:'https://github.com/2dust/v2rayNG/releases/latest'}},
+v2box:{{s:'v2box://install-config?url='+encodeURIComponent(SUB_URL),d:'https://apps.apple.com/app/v2box-v2ray-client/id6446814690'}},
+clash:{{s:'clash://install-config?url='+encodeURIComponent(SUB_URL),d:'https://github.com/MetaCubeX/ClashMetaForAndroid/releases/latest'}}
+}};
 function openApp(n){{const a=apps[n];if(!a)return;if(a.s){{const t=Date.now();location.href=a.s;setTimeout(()=>{{if(Date.now()-t<1600){{showToast('دانلود...');setTimeout(()=>open(a.d),700)}}}},1400)}}else open(a.d)}}
 function copyText(t,m){{if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>showToast(m));else{{const i=document.createElement('input');i.value=t;document.body.appendChild(i);i.select();document.execCommand('copy');document.body.removeChild(i);showToast(m)}}}}
 function shareLink(){{if(navigator.share)navigator.share({{title:'VROOM',url:SUB_URL}}).catch(()=>copyText(SUB_URL,'کپی شد'));else copyText(SUB_URL,'کپی شد')}}
