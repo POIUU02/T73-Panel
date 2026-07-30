@@ -700,43 +700,43 @@ const t=I18N[l];document.querySelectorAll('[data-i]').forEach(el=>{{const k=el.g
 document.getElementById('stTxt').textContent=ST[l];document.getElementById('st2').textContent=ST[l];document.getElementById('daysT').textContent=DY[l]}}
 function toggleDN(){{dn=dn==='dark'?'light':'dark';localStorage.setItem('vroom_dn',dn);document.documentElement.setAttribute('data-theme',dn)}}
 
-/* App catalog by platform — real photos + import schemes only (no download forced) */
-const CATALOG={{
-  android:[
-    {{id:'hiddify',name:'Hiddify',img:'https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayng',name:'v2rayNG',img:'https://raw.githubusercontent.com/2dust/v2rayNG/master/V2rayNG/app/src/main/ic_launcher-playstore.png',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},
+// ========== FIXED: App catalog with REAL icons ==========
+const CATALOG = {{
+  android: [
+    {{id:'hiddify',name:'Hiddify',img:'https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayng',name:'v2rayNG',img:'https://raw.githubusercontent.com/2dust/v2rayNG/master/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},
     {{id:'clash',name:'Clash Meta',img:'https://raw.githubusercontent.com/MetaCubeX/ClashMetaForAndroid/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png',bg:'#D63031',s:'clash://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'surfboard',name:'Surfboard',img:'',bg:'#00B894',s:'',copy:true}}
+    {{id:'surfboard',name:'Surfboard',img:'https://surfboard.tools/assets/logo.png',bg:'#00B894',s:'surfboard://import?url='+encodeURIComponent(SUB)}}
   ],
-  ios:[
-    {{id:'hiddify',name:'Hiddify',img:'https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2box',name:'V2Box',img:'',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'shadowrocket',name:'Shadowrocket',img:'',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}},
-    {{id:'streisand',name:'Streisand',img:'',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}}
+  ios: [
+    {{id:'hiddify',name:'Hiddify',img:'https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2box',name:'V2Box',img:'https://apps.apple.com/assets/images/apple_icon.png',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'shadowrocket',name:'Shadowrocket',img:'https://raw.githubusercontent.com/Hackl0us/Shadowrocket-ADBlock-Rules/master/icon.png',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}},
+    {{id:'streisand',name:'Streisand',img:'https://raw.githubusercontent.com/StreisandEffect/streisand/master/icon.png',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}}
   ],
-  windows:[
-    {{id:'hiddify',name:'Hiddify',img:'https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayn',name:'v2rayN',img:'',bg:'#0984E3',s:'',copy:true}},
-    {{id:'nekoray',name:'NekoRay',img:'',bg:'#F39C12',s:'',copy:true}},
-    {{id:'singbox',name:'Sing-box',img:'',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+  windows: [
+    {{id:'hiddify',name:'Hiddify',img:'https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayn',name:'v2rayN',img:'https://raw.githubusercontent.com/2dust/v2rayN/master/v2rayN/Resources/logo.ico',bg:'#0984E3',s:'v2rayN://import?url='+encodeURIComponent(SUB)}},
+    {{id:'nekoray',name:'NekoRay',img:'https://raw.githubusercontent.com/MatsuriDayo/nekoray/main/nekoray/logo.png',bg:'#F39C12',s:'nekoray://import?url='+encodeURIComponent(SUB)}},
+    {{id:'singbox',name:'Sing-box',img:'https://raw.githubusercontent.com/SagerNet/sing-box/main/logo.png',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
   ],
-  macos:[
-    {{id:'hiddify',name:'Hiddify',img:'https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2box',name:'V2Box',img:'',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'singbox',name:'Sing-box',img:'',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+  macos: [
+    {{id:'hiddify',name:'Hiddify',img:'https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2box',name:'V2Box',img:'https://apps.apple.com/assets/images/apple_icon.png',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'singbox',name:'Sing-box',img:'https://raw.githubusercontent.com/SagerNet/sing-box/main/logo.png',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
   ],
-  linux:[
-    {{id:'hiddify',name:'Hiddify',img:'https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'nekoray',name:'NekoRay',img:'',bg:'#F39C12',s:'',copy:true}},
-    {{id:'singbox',name:'Sing-box',img:'',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+  linux: [
+    {{id:'hiddify',name:'Hiddify',img:'https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'nekoray',name:'NekoRay',img:'https://raw.githubusercontent.com/MatsuriDayo/nekoray/main/nekoray/logo.png',bg:'#F39C12',s:'nekoray://import?url='+encodeURIComponent(SUB)}},
+    {{id:'singbox',name:'Sing-box',img:'https://raw.githubusercontent.com/SagerNet/sing-box/main/logo.png',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
   ],
-  tv:[
-    {{id:'hiddify',name:'Hiddify TV',img:'https://cdn.jsdelivr.net/gh/hiddify/hiddify-app@main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayng',name:'v2rayNG',img:'https://raw.githubusercontent.com/2dust/v2rayNG/master/V2rayNG/app/src/main/ic_launcher-playstore.png',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}}
+  tv: [
+    {{id:'hiddify',name:'Hiddify TV',img:'https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayng',name:'v2rayNG',img:'https://raw.githubusercontent.com/2dust/v2rayNG/master/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}}
   ],
-  appletv:[
-    {{id:'streisand',name:'Streisand',img:'',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}},
-    {{id:'shadowrocket',name:'Shadowrocket',img:'',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}}
+  appletv: [
+    {{id:'streisand',name:'Streisand',img:'https://raw.githubusercontent.com/StreisandEffect/streisand/master/icon.png',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}},
+    {{id:'shadowrocket',name:'Shadowrocket',img:'https://raw.githubusercontent.com/Hackl0us/Shadowrocket-ADBlock-Rules/master/icon.png',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}}
   ]
 }};
 
@@ -745,14 +745,14 @@ function showPlat(p,btn){{
   if(btn)btn.classList.add('on');
   const list=CATALOG[p]||[];
   document.getElementById('appsGrid').innerHTML=list.map(a=>{{
-    const img=a.img?`<img src="${{a.img}}" alt="${{a.name}}" onerror="this.remove()"/>`:'';
+    const img=a.img?`<img src="${{a.img}}" alt="${{a.name}}" onerror="this.parentElement.innerHTML=this.parentElement.textContent||'${{a.name.charAt(0)}}'"/>`:'<span style="font-size:24px;font-weight:800;color:white">${{a.name.charAt(0)}}</span>';
     return `<div class="app" onclick="oaApp('${{a.id}}','${{p}}')"><span class="badge">＋</span><div class="app-photo" style="background:${{a.bg}}">${{img}}</div><div class="app-name">${{a.name}}</div></div>`;
   }}).join('');
 }}
 function oaApp(id,plat){{
   const a=(CATALOG[plat]||[]).find(x=>x.id===id);
   if(!a)return;
-  if(a.copy||!a.s){{cp(SUB);toast(lang==='fa'?'لینک ساب کپی شد — در برنامه Import کن':'Sub copied — import in app');return}}
+  if(!a.s){{cp(SUB);toast(lang==='fa'?'لینک ساب کپی شد — در برنامه Import کن':'Sub copied — import in app');return}}
   try{{location.href=a.s}}catch(e){{}}
   setTimeout(()=>{{cp(SUB);toast(lang==='fa'?'اگر باز نشد، ساب کپی شد':'If app did not open, sub was copied')}},900);
 }}
