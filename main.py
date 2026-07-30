@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """
-VROOM Panel v5
+VROOM Panel v5 - با دانلود خودکار آیکون برنامه‌ها
 - /sub/{uid}  → plain-text vless lines (FOR APPS — fixes import)
 - /page/{uid} → beautiful bilingual panel + day/night + themes
 - Dashboard bilingual
 - Telegram button bot
 """
-import asyncio, json, os, hashlib, secrets, time, re, base64
+import asyncio, json, os, hashlib, secrets, time, re, base64, aiohttp
 from datetime import datetime, timedelta
 from urllib.parse import quote
 from collections import deque, defaultdict
 from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconnect, Depends
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import uvicorn, httpx, logging, psutil
+import aiofiles
 
 try:
     SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_urlsafe(32)
@@ -27,6 +29,10 @@ app = FastAPI(title="VROOM", docs_url=None, redoc_url=None)
 CONFIG = {"port": int(os.environ.get("PORT", 8080)), "secret": SECRET_KEY}
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
+# ========== STATIC FILES FOR ICONS ==========
+os.makedirs("static/icons", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 connections, connection_sockets = {}, {}
 link_ip_map = defaultdict(set)
 stats = {"total_bytes": 0, "download_bytes": 0, "upload_bytes": 0, "total_requests": 0, "total_errors": 0, "start_time": time.time()}
@@ -39,6 +45,97 @@ CUSTOM_DOMAIN, CUSTOM_DOMAIN_LOCK = "", asyncio.Lock()
 TELEGRAM = {"token": os.environ.get("TELEGRAM_BOT_TOKEN", ""), "admin_ids": [], "enabled": False, "offset": 0}
 TELEGRAM_LOCK, TELEGRAM_TASK, TG_STATE = asyncio.Lock(), None, {}
 SESSION_COOKIE, SESSION_TTL = "vroom_session", 60 * 60 * 24 * 7
+ICON_CACHE = {}
+
+# ========== APP ICON CONFIGURATION ==========
+APP_ICONS = {
+    "hiddify": {
+        "url": "https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png",
+        "filename": "hiddify.png"
+    },
+    "v2rayng": {
+        "url": "https://raw.githubusercontent.com/2dust/v2rayNG/master/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+        "filename": "v2rayng.png"
+    },
+    "clash": {
+        "url": "https://raw.githubusercontent.com/MetaCubeX/ClashMetaForAndroid/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+        "filename": "clash.png"
+    },
+    "surfboard": {
+        "url": "https://surfboard.tools/assets/logo.png",
+        "filename": "surfboard.png"
+    },
+    "v2box": {
+        "url": "https://is1-ssl.mzstatic.com/image/thumb/Purple116/v4/8a/8b/3a/8a8b3a5c-8b5a-5b5a-5b5a-5b5a5b5a5b5a/AppIcon-0-0-1x_U007emarketing-0-0-0-7-0-0-sRGB-0-0-0-GLES2_U002c0-512MB-85-220-0-0.png/512x512bb.jpg",
+        "filename": "v2box.png"
+    },
+    "shadowrocket": {
+        "url": "https://raw.githubusercontent.com/Hackl0us/Shadowrocket-ADBlock-Rules/master/icon.png",
+        "filename": "shadowrocket.png"
+    },
+    "streisand": {
+        "url": "https://raw.githubusercontent.com/StreisandEffect/streisand/master/icon.png",
+        "filename": "streisand.png"
+    },
+    "v2rayn": {
+        "url": "https://raw.githubusercontent.com/2dust/v2rayN/master/v2rayN/Resources/logo.ico",
+        "filename": "v2rayn.png"
+    },
+    "nekoray": {
+        "url": "https://raw.githubusercontent.com/MatsuriDayo/nekoray/main/nekoray/logo.png",
+        "filename": "nekoray.png"
+    },
+    "singbox": {
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-box/main/logo.png",
+        "filename": "singbox.png"
+    }
+}
+
+async def download_icon(app_id, url, filename):
+    """دانلود آیکون برنامه و ذخیره محلی"""
+    local_path = f"static/icons/{filename}"
+    
+    # اگر فایل وجود دارد، نیازی به دانلود مجدد نیست
+    if os.path.exists(local_path):
+        logger.info(f"✅ Icon already exists: {filename}")
+        return f"/static/icons/{filename}"
+    
+    try:
+        logger.info(f"📥 Downloading icon for {app_id} from {url}")
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(url, follow_redirects=True)
+            if response.status_code == 200:
+                # ذخیره فایل
+                async with aiofiles.open(local_path, 'wb') as f:
+                    await f.write(response.content)
+                logger.info(f"✅ Downloaded: {filename} ({len(response.content)} bytes)")
+                return f"/static/icons/{filename}"
+            else:
+                logger.warning(f"❌ Failed to download {url}: {response.status_code}")
+    except Exception as e:
+        logger.error(f"❌ Error downloading {app_id}: {e}")
+    
+    # اگر دانلود نشد، از placeholder استفاده کن
+    return None
+
+async def download_all_icons():
+    """دانلود تمام آیکون‌ها"""
+    tasks = []
+    for app_id, info in APP_ICONS.items():
+        task = download_icon(app_id, info["url"], info["filename"])
+        tasks.append(task)
+    
+    results = await asyncio.gather(*tasks)
+    
+    # ایجاد نقشه آیکون‌های موجود
+    for i, (app_id, info) in enumerate(APP_ICONS.items()):
+        if results[i]:
+            ICON_CACHE[app_id] = results[i]
+        else:
+            # استفاده از placeholder در صورت عدم موفقیت
+            ICON_CACHE[app_id] = None
+    
+    logger.info(f"🎯 Downloaded {sum(1 for r in results if r)}/{len(APP_ICONS)} icons")
 
 def hash_password(pw): return hashlib.sha256(f"{pw}{CONFIG['secret']}".encode()).hexdigest()
 AUTH = {"password_hash": hash_password(os.environ.get("ADMIN_PASSWORD", "admin"))}
@@ -345,6 +442,10 @@ async def startup():
     global http_client
     http_client = httpx.AsyncClient(limits=httpx.Limits(max_connections=5000, max_keepalive_connections=1000), timeout=httpx.Timeout(180.0, connect=30.0), follow_redirects=True)
     logger.info(f"🚀 VROOM v5 :{CONFIG['port']}")
+    
+    # دانلود آیکون‌ها در پس‌زمینه
+    asyncio.create_task(download_all_icons())
+    
     asyncio.create_task(keep_alive())
     if TELEGRAM.get("token") and TELEGRAM.get("admin_ids"):
         TELEGRAM["enabled"] = True
@@ -563,6 +664,16 @@ async def subscription_page(uid: str):
     domain = get_domain(); sub_url = f"https://{domain}/sub/{uid}"; qr_data = quote(server_link, safe="")
     live_conns = count_connections_for_link(uid)
 
+    # ساخت کد جاوااسکریپت با آیکون‌های واقعی
+    icon_data = {}
+    for app_id, path in ICON_CACHE.items():
+        if path:
+            icon_data[app_id] = path
+    
+    # تبدیل به JSON برای جاوااسکریپت
+    import json as json_module
+    icon_json = json_module.dumps(icon_data)
+
     html = f"""<!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark"><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
@@ -700,43 +811,46 @@ const t=I18N[l];document.querySelectorAll('[data-i]').forEach(el=>{{const k=el.g
 document.getElementById('stTxt').textContent=ST[l];document.getElementById('st2').textContent=ST[l];document.getElementById('daysT').textContent=DY[l]}}
 function toggleDN(){{dn=dn==='dark'?'light':'dark';localStorage.setItem('vroom_dn',dn);document.documentElement.setAttribute('data-theme',dn)}}
 
-// ========== FIXED: App catalog with REAL icons ==========
+// ========== APP ICONS (دانلود شده از سرور) ==========
+const APP_ICONS = {icon_json};
+
+// ========== App catalog with real downloaded icons ==========
 const CATALOG = {{
   android: [
-    {{id:'hiddify',name:'Hiddify',img:'https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayng',name:'v2rayNG',img:'https://raw.githubusercontent.com/2dust/v2rayNG/master/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'clash',name:'Clash Meta',img:'https://raw.githubusercontent.com/MetaCubeX/ClashMetaForAndroid/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png',bg:'#D63031',s:'clash://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'surfboard',name:'Surfboard',img:'https://surfboard.tools/assets/logo.png',bg:'#00B894',s:'surfboard://import?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',img:APP_ICONS['hiddify'] || '',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayng',name:'v2rayNG',img:APP_ICONS['v2rayng'] || '',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'clash',name:'Clash Meta',img:APP_ICONS['clash'] || '',bg:'#D63031',s:'clash://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'surfboard',name:'Surfboard',img:APP_ICONS['surfboard'] || '',bg:'#00B894',s:'surfboard://import?url='+encodeURIComponent(SUB)}}
   ],
   ios: [
-    {{id:'hiddify',name:'Hiddify',img:'https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2box',name:'V2Box',img:'https://apps.apple.com/assets/images/apple_icon.png',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'shadowrocket',name:'Shadowrocket',img:'https://raw.githubusercontent.com/Hackl0us/Shadowrocket-ADBlock-Rules/master/icon.png',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}},
-    {{id:'streisand',name:'Streisand',img:'https://raw.githubusercontent.com/StreisandEffect/streisand/master/icon.png',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',img:APP_ICONS['hiddify'] || '',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2box',name:'V2Box',img:APP_ICONS['v2box'] || '',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'shadowrocket',name:'Shadowrocket',img:APP_ICONS['shadowrocket'] || '',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}},
+    {{id:'streisand',name:'Streisand',img:APP_ICONS['streisand'] || '',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}}
   ],
   windows: [
-    {{id:'hiddify',name:'Hiddify',img:'https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayn',name:'v2rayN',img:'https://raw.githubusercontent.com/2dust/v2rayN/master/v2rayN/Resources/logo.ico',bg:'#0984E3',s:'v2rayN://import?url='+encodeURIComponent(SUB)}},
-    {{id:'nekoray',name:'NekoRay',img:'https://raw.githubusercontent.com/MatsuriDayo/nekoray/main/nekoray/logo.png',bg:'#F39C12',s:'nekoray://import?url='+encodeURIComponent(SUB)}},
-    {{id:'singbox',name:'Sing-box',img:'https://raw.githubusercontent.com/SagerNet/sing-box/main/logo.png',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',img:APP_ICONS['hiddify'] || '',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayn',name:'v2rayN',img:APP_ICONS['v2rayn'] || '',bg:'#0984E3',s:'v2rayN://import?url='+encodeURIComponent(SUB)}},
+    {{id:'nekoray',name:'NekoRay',img:APP_ICONS['nekoray'] || '',bg:'#F39C12',s:'nekoray://import?url='+encodeURIComponent(SUB)}},
+    {{id:'singbox',name:'Sing-box',img:APP_ICONS['singbox'] || '',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
   ],
   macos: [
-    {{id:'hiddify',name:'Hiddify',img:'https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2box',name:'V2Box',img:'https://apps.apple.com/assets/images/apple_icon.png',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'singbox',name:'Sing-box',img:'https://raw.githubusercontent.com/SagerNet/sing-box/main/logo.png',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',img:APP_ICONS['hiddify'] || '',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2box',name:'V2Box',img:APP_ICONS['v2box'] || '',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'singbox',name:'Sing-box',img:APP_ICONS['singbox'] || '',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
   ],
   linux: [
-    {{id:'hiddify',name:'Hiddify',img:'https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'nekoray',name:'NekoRay',img:'https://raw.githubusercontent.com/MatsuriDayo/nekoray/main/nekoray/logo.png',bg:'#F39C12',s:'nekoray://import?url='+encodeURIComponent(SUB)}},
-    {{id:'singbox',name:'Sing-box',img:'https://raw.githubusercontent.com/SagerNet/sing-box/main/logo.png',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',img:APP_ICONS['hiddify'] || '',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'nekoray',name:'NekoRay',img:APP_ICONS['nekoray'] || '',bg:'#F39C12',s:'nekoray://import?url='+encodeURIComponent(SUB)}},
+    {{id:'singbox',name:'Sing-box',img:APP_ICONS['singbox'] || '',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
   ],
   tv: [
-    {{id:'hiddify',name:'Hiddify TV',img:'https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayng',name:'v2rayNG',img:'https://raw.githubusercontent.com/2dust/v2rayNG/master/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify TV',img:APP_ICONS['hiddify'] || '',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayng',name:'v2rayNG',img:APP_ICONS['v2rayng'] || '',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}}
   ],
   appletv: [
-    {{id:'streisand',name:'Streisand',img:'https://raw.githubusercontent.com/StreisandEffect/streisand/master/icon.png',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}},
-    {{id:'shadowrocket',name:'Shadowrocket',img:'https://raw.githubusercontent.com/Hackl0us/Shadowrocket-ADBlock-Rules/master/icon.png',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}}
+    {{id:'streisand',name:'Streisand',img:APP_ICONS['streisand'] || '',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}},
+    {{id:'shadowrocket',name:'Shadowrocket',img:APP_ICONS['shadowrocket'] || '',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}}
   ]
 }};
 
@@ -745,7 +859,7 @@ function showPlat(p,btn){{
   if(btn)btn.classList.add('on');
   const list=CATALOG[p]||[];
   document.getElementById('appsGrid').innerHTML=list.map(a=>{{
-    const img=a.img?`<img src="${{a.img}}" alt="${{a.name}}" onerror="this.parentElement.innerHTML=this.parentElement.textContent||'${{a.name.charAt(0)}}'"/>`:'<span style="font-size:24px;font-weight:800;color:white">${{a.name.charAt(0)}}</span>';
+    const img = a.img ? `<img src="${{a.img}}" alt="${{a.name}}" loading="lazy" onerror="this.parentElement.innerHTML='<span style=\\'font-size:24px;font-weight:800;color:white\\'>${{a.name.charAt(0)}}</span>'"/>` : `<span style="font-size:24px;font-weight:800;color:white">${{a.name.charAt(0)}}</span>`;
     return `<div class="app" onclick="oaApp('${{a.id}}','${{p}}')"><span class="badge">＋</span><div class="app-photo" style="background:${{a.bg}}">${{img}}</div><div class="app-name">${{a.name}}</div></div>`;
   }}).join('');
 }}
