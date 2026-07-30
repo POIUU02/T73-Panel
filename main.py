@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-VROOM Panel v5 - با دانلود خودکار آیکون برنامه‌ها
+VROOM Panel v5
 - /sub/{uid}  → plain-text vless lines (FOR APPS — fixes import)
 - /page/{uid} → beautiful bilingual panel + day/night + themes
 - Dashboard bilingual
 - Telegram button bot
+- Easy Import with REAL app icons
 """
 import asyncio, json, os, hashlib, secrets, time, re, base64
 from datetime import datetime, timedelta
@@ -15,6 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn, httpx, logging, psutil
+from pathlib import Path
 import aiofiles
 
 try:
@@ -29,8 +31,9 @@ app = FastAPI(title="VROOM", docs_url=None, redoc_url=None)
 CONFIG = {"port": int(os.environ.get("PORT", 8080)), "secret": SECRET_KEY}
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-# ========== STATIC FILES FOR ICONS ==========
-os.makedirs("static/icons", exist_ok=True)
+# Create static directory for icons
+STATIC_DIR = Path("static/icons")
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 connections, connection_sockets = {}, {}
@@ -45,97 +48,90 @@ CUSTOM_DOMAIN, CUSTOM_DOMAIN_LOCK = "", asyncio.Lock()
 TELEGRAM = {"token": os.environ.get("TELEGRAM_BOT_TOKEN", ""), "admin_ids": [], "enabled": False, "offset": 0}
 TELEGRAM_LOCK, TELEGRAM_TASK, TG_STATE = asyncio.Lock(), None, {}
 SESSION_COOKIE, SESSION_TTL = "vroom_session", 60 * 60 * 24 * 7
-ICON_CACHE = {}
 
-# ========== APP ICON CONFIGURATION ==========
+# ========== APP ICONS DATABASE ==========
 APP_ICONS = {
     "hiddify": {
         "url": "https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png",
-        "filename": "hiddify.png"
+        "emoji": "🛡️",
+        "bg": "#455FE9"
     },
     "v2rayng": {
-        "url": "https://raw.githubusercontent.com/2dust/v2rayNG/master/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
-        "filename": "v2rayng.png"
+        "url": "https://raw.githubusercontent.com/2dust/v2rayNG/master/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+        "emoji": "📡",
+        "bg": "#1E88E5"
     },
     "clash": {
         "url": "https://raw.githubusercontent.com/MetaCubeX/ClashMetaForAndroid/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
-        "filename": "clash.png"
+        "emoji": "⚡",
+        "bg": "#D63031"
     },
     "surfboard": {
         "url": "https://surfboard.tools/assets/logo.png",
-        "filename": "surfboard.png"
+        "emoji": "🏄",
+        "bg": "#00B894"
     },
     "v2box": {
-        "url": "https://is1-ssl.mzstatic.com/image/thumb/Purple116/v4/8a/8b/3a/8a8b3a5c-8b5a-5b5a-5b5a-5b5a5b5a5b5a/AppIcon-0-0-1x_U007emarketing-0-0-0-7-0-0-sRGB-0-0-0-GLES2_U002c0-512MB-85-220-0-0.png/512x512bb.jpg",
-        "filename": "v2box.png"
+        "url": "https://is1-ssl.mzstatic.com/image/thumb/Purple116/v4/8c/3a/8d/8c3a8d56-2b1c-8c3a-8d56-2b1c8c3a8d56/AppIcon-0-0-1x_U007emarketing-0-0-0-7-0-0-sRGB-0-0-0-GLES2_U002c0-512MB-85-220-0-0.png/512x512bb.jpg",
+        "emoji": "📦",
+        "bg": "#6C5CE7"
     },
     "shadowrocket": {
         "url": "https://raw.githubusercontent.com/Hackl0us/Shadowrocket-ADBlock-Rules/master/icon.png",
-        "filename": "shadowrocket.png"
+        "emoji": "🚀",
+        "bg": "#E84393"
     },
     "streisand": {
         "url": "https://raw.githubusercontent.com/StreisandEffect/streisand/master/icon.png",
-        "filename": "streisand.png"
+        "emoji": "🌹",
+        "bg": "#FF6B6B"
     },
     "v2rayn": {
         "url": "https://raw.githubusercontent.com/2dust/v2rayN/master/v2rayN/Resources/logo.ico",
-        "filename": "v2rayn.png"
+        "emoji": "🌐",
+        "bg": "#0984E3"
     },
     "nekoray": {
         "url": "https://raw.githubusercontent.com/MatsuriDayo/nekoray/main/nekoray/logo.png",
-        "filename": "nekoray.png"
+        "emoji": "🐱",
+        "bg": "#F39C12"
     },
     "singbox": {
         "url": "https://raw.githubusercontent.com/SagerNet/sing-box/main/logo.png",
-        "filename": "singbox.png"
+        "emoji": "🎵",
+        "bg": "#00B894"
     }
 }
 
-async def download_icon(app_id, url, filename):
-    """دانلود آیکون برنامه و ذخیره محلی با استفاده از httpx"""
-    local_path = f"static/icons/{filename}"
+async def download_icon(app_id: str):
+    """Download app icon and save locally"""
+    filepath = STATIC_DIR / f"{app_id}.png"
+    if filepath.exists():
+        return f"/static/icons/{app_id}.png"
     
-    # اگر فایل وجود دارد، نیازی به دانلود مجدد نیست
-    if os.path.exists(local_path) and os.path.getsize(local_path) > 100:
-        logger.info(f"✅ Icon already exists: {filename}")
-        return f"/static/icons/{filename}"
+    icon_data = APP_ICONS.get(app_id)
+    if not icon_data:
+        return None
     
     try:
-        logger.info(f"📥 Downloading icon for {app_id} from {url}")
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            response = await client.get(url)
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(icon_data["url"])
             if response.status_code == 200:
-                # ذخیره فایل
-                async with aiofiles.open(local_path, 'wb') as f:
+                async with aiofiles.open(filepath, 'wb') as f:
                     await f.write(response.content)
-                logger.info(f"✅ Downloaded: {filename} ({len(response.content)} bytes)")
-                return f"/static/icons/{filename}"
-            else:
-                logger.warning(f"❌ Failed to download {url}: {response.status_code}")
+                logger.info(f"✅ Downloaded icon for {app_id}")
+                return f"/static/icons/{app_id}.png"
     except Exception as e:
-        logger.error(f"❌ Error downloading {app_id}: {e}")
-    
-    # اگر دانلود نشد، از placeholder استفاده کن
+        logger.error(f"Failed to download icon for {app_id}: {e}")
     return None
 
-async def download_all_icons():
-    """دانلود تمام آیکون‌ها"""
-    tasks = []
-    for app_id, info in APP_ICONS.items():
-        task = download_icon(app_id, info["url"], info["filename"])
-        tasks.append(task)
-    
-    results = await asyncio.gather(*tasks)
-    
-    # ایجاد نقشه آیکون‌های موجود
-    for i, (app_id, info) in enumerate(APP_ICONS.items()):
-        if results[i]:
-            ICON_CACHE[app_id] = results[i]
-        else:
-            # استفاده از placeholder در صورت عدم موفقیت
-            ICON_CACHE[app_id] = None
-    
-    logger.info(f"🎯 Downloaded {sum(1 for r in results if r)}/{len(APP_ICONS)} icons")
+@app.get("/api/app-icon/{app_id}")
+async def get_app_icon(app_id: str):
+    """API endpoint to get app icon URL"""
+    icon_path = await download_icon(app_id)
+    if icon_path:
+        return {"url": icon_path}
+    return {"url": None}
 
 def hash_password(pw): return hashlib.sha256(f"{pw}{CONFIG['secret']}".encode()).hexdigest()
 AUTH = {"password_hash": hash_password(os.environ.get("ADMIN_PASSWORD", "admin"))}
@@ -442,14 +438,22 @@ async def startup():
     global http_client
     http_client = httpx.AsyncClient(limits=httpx.Limits(max_connections=5000, max_keepalive_connections=1000), timeout=httpx.Timeout(180.0, connect=30.0), follow_redirects=True)
     logger.info(f"🚀 VROOM v5 :{CONFIG['port']}")
-    
-    # دانلود آیکون‌ها در پس‌زمینه
-    asyncio.create_task(download_all_icons())
-    
     asyncio.create_task(keep_alive())
     if TELEGRAM.get("token") and TELEGRAM.get("admin_ids"):
         TELEGRAM["enabled"] = True
         await start_telegram_bot()
+    
+    # Download all app icons in background
+    asyncio.create_task(download_all_icons())
+
+async def download_all_icons():
+    """Download all app icons in background"""
+    logger.info("📥 Downloading app icons...")
+    tasks = []
+    for app_id in APP_ICONS.keys():
+        tasks.append(download_icon(app_id))
+    await asyncio.gather(*tasks)
+    logger.info("✅ App icons downloaded")
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -664,16 +668,6 @@ async def subscription_page(uid: str):
     domain = get_domain(); sub_url = f"https://{domain}/sub/{uid}"; qr_data = quote(server_link, safe="")
     live_conns = count_connections_for_link(uid)
 
-    # ساخت کد جاوااسکریپت با آیکون‌های واقعی
-    icon_data = {}
-    for app_id, path in ICON_CACHE.items():
-        if path:
-            icon_data[app_id] = path
-    
-    # تبدیل به JSON برای جاوااسکریپت
-    import json as json_module
-    icon_json = json_module.dumps(icon_data)
-
     html = f"""<!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark"><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
@@ -728,8 +722,12 @@ background-image:radial-gradient(ellipse at 12% 0%,rgba(155,138,251,.14),transpa
 @media(max-width:400px){{.apps{{grid-template-columns:repeat(3,1fr)}}}}
 .app{{background:rgba(255,255,255,.04);border:1px solid var(--b);border-radius:16px;padding:12px 6px 10px;text-align:center;cursor:pointer;position:relative;transition:.2s}}
 .app:active{{transform:scale(.96)}}
-.app-photo{{width:54px;height:54px;margin:0 auto 7px;border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;background:#1a1a2e}}
-.app-photo img{{width:100%;height:100%;object-fit:cover;display:block}}
+.app-photo{{width:54px;height:54px;margin:0 auto 7px;border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;background:#1a1a2e;transition:transform .2s ease}}
+.app:hover .app-photo{{transform:scale(1.05)}}
+.app-photo img{{width:100%;height:100%;object-fit:cover;display:block;border-radius:14px}}
+.app-photo .fallback{{font-size:32px;font-weight:900;color:white}}
+.loading-icon{{width:24px;height:24px;border:3px solid rgba(255,255,255,0.1);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite}}
+@keyframes spin{{to{{transform:rotate(360deg)}}}}
 .app-name{{font-size:10px;font-weight:700;color:var(--t)}}
 .app-os{{font-size:9px;color:var(--m);margin-top:2px}}
 .badge{{position:absolute;top:6px;right:6px;font-size:9px;background:rgba(232,197,71,.22);color:var(--g);padding:2px 5px;border-radius:6px;font-weight:800}}
@@ -741,7 +739,6 @@ footer b{{background:linear-gradient(135deg,var(--g),var(--ac));-webkit-backgrou
 .lp{{display:inline-flex;border-radius:18px;border:1px solid var(--b);overflow:hidden;font-size:10px;font-weight:700}}
 .lp button{{border:none;padding:5px 10px;cursor:pointer;background:transparent;color:var(--m);font-family:inherit;font-weight:700}}
 .lp button.on{{background:linear-gradient(135deg,var(--g),var(--g2));color:#0a0a10}}
-.app-photo img{{width:100%;height:100%;object-fit:cover;display:block;border-radius:14px}}
 </style></head><body>
 <div class="w">
 <div class="top">
@@ -805,71 +802,115 @@ const ST={{fa:'{status_fa}',en:'{status_en}'}}, DY={{fa:'{days_fa}',en:'{days_en
 const I18N={{fa:{{title:'Subscription',online:'سرور آنلاین',conn:'اتصالات',used:'مصرفی',status:'وضعیت',left:'باقی',subLink:'لینک ساب (برنامه‌ها)',copy:'کپی',expire:'انقضا',days:'باقی',cfg:'کانفیگ و QR',add:'＋ اضافه اشتراک',share:'اشتراک',easy:'Easy Import'}},
 en:{{title:'Subscription',online:'Server Online',conn:'Connections',used:'Used',status:'Status',left:'Left',subLink:'Sub link (for apps)',copy:'Copy',expire:'Expiry',days:'Left',cfg:'Config & QR',add:'＋ Add Sub',share:'Share',easy:'Easy Import'}}}};
 let lang=localStorage.getItem('vroom_lang')||'fa', dn=localStorage.getItem('vroom_dn')||'dark';
+
 function setLang(l){{lang=l;localStorage.setItem('vroom_lang',l);document.documentElement.lang=l;document.documentElement.dir=l==='fa'?'rtl':'ltr';
 document.getElementById('langFa').classList.toggle('on',l==='fa');document.getElementById('langEn').classList.toggle('on',l==='en');
 const t=I18N[l];document.querySelectorAll('[data-i]').forEach(el=>{{const k=el.getAttribute('data-i');if(t[k])el.textContent=t[k]}});
 document.getElementById('stTxt').textContent=ST[l];document.getElementById('st2').textContent=ST[l];document.getElementById('daysT').textContent=DY[l]}}
 function toggleDN(){{dn=dn==='dark'?'light':'dark';localStorage.setItem('vroom_dn',dn);document.documentElement.setAttribute('data-theme',dn)}}
 
-// ========== APP ICONS (دانلود شده از سرور) ==========
-const APP_ICONS = {icon_json};
-
-// ========== App catalog with real downloaded icons ==========
+// ========== APP CATALOG WITH REAL ICONS ==========
 const CATALOG = {{
   android: [
-    {{id:'hiddify',name:'Hiddify',img:APP_ICONS['hiddify'] || '',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayng',name:'v2rayNG',img:APP_ICONS['v2rayng'] || '',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'clash',name:'Clash Meta',img:APP_ICONS['clash'] || '',bg:'#D63031',s:'clash://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'surfboard',name:'Surfboard',img:APP_ICONS['surfboard'] || '',bg:'#00B894',s:'surfboard://import?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',emoji:'🛡️',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayng',name:'v2rayNG',emoji:'📡',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'clash',name:'Clash Meta',emoji:'⚡',bg:'#D63031',s:'clash://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'surfboard',name:'Surfboard',emoji:'🏄',bg:'#00B894',s:'surfboard://import?url='+encodeURIComponent(SUB)}}
   ],
   ios: [
-    {{id:'hiddify',name:'Hiddify',img:APP_ICONS['hiddify'] || '',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2box',name:'V2Box',img:APP_ICONS['v2box'] || '',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'shadowrocket',name:'Shadowrocket',img:APP_ICONS['shadowrocket'] || '',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}},
-    {{id:'streisand',name:'Streisand',img:APP_ICONS['streisand'] || '',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',emoji:'🛡️',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2box',name:'V2Box',emoji:'📦',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'shadowrocket',name:'Shadowrocket',emoji:'🚀',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}},
+    {{id:'streisand',name:'Streisand',emoji:'🌹',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}}
   ],
   windows: [
-    {{id:'hiddify',name:'Hiddify',img:APP_ICONS['hiddify'] || '',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayn',name:'v2rayN',img:APP_ICONS['v2rayn'] || '',bg:'#0984E3',s:'v2rayN://import?url='+encodeURIComponent(SUB)}},
-    {{id:'nekoray',name:'NekoRay',img:APP_ICONS['nekoray'] || '',bg:'#F39C12',s:'nekoray://import?url='+encodeURIComponent(SUB)}},
-    {{id:'singbox',name:'Sing-box',img:APP_ICONS['singbox'] || '',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',emoji:'🛡️',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayn',name:'v2rayN',emoji:'🌐',bg:'#0984E3',s:'v2rayN://import?url='+encodeURIComponent(SUB)}},
+    {{id:'nekoray',name:'NekoRay',emoji:'🐱',bg:'#F39C12',s:'nekoray://import?url='+encodeURIComponent(SUB)}},
+    {{id:'singbox',name:'Sing-box',emoji:'🎵',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
   ],
   macos: [
-    {{id:'hiddify',name:'Hiddify',img:APP_ICONS['hiddify'] || '',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2box',name:'V2Box',img:APP_ICONS['v2box'] || '',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'singbox',name:'Sing-box',img:APP_ICONS['singbox'] || '',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',emoji:'🛡️',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2box',name:'V2Box',emoji:'📦',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'singbox',name:'Sing-box',emoji:'🎵',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
   ],
   linux: [
-    {{id:'hiddify',name:'Hiddify',img:APP_ICONS['hiddify'] || '',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'nekoray',name:'NekoRay',img:APP_ICONS['nekoray'] || '',bg:'#F39C12',s:'nekoray://import?url='+encodeURIComponent(SUB)}},
-    {{id:'singbox',name:'Sing-box',img:APP_ICONS['singbox'] || '',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',emoji:'🛡️',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'nekoray',name:'NekoRay',emoji:'🐱',bg:'#F39C12',s:'nekoray://import?url='+encodeURIComponent(SUB)}},
+    {{id:'singbox',name:'Sing-box',emoji:'🎵',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
   ],
   tv: [
-    {{id:'hiddify',name:'Hiddify TV',img:APP_ICONS['hiddify'] || '',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayng',name:'v2rayNG',img:APP_ICONS['v2rayng'] || '',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify TV',emoji:'🛡️',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayng',name:'v2rayNG',emoji:'📡',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}}
   ],
   appletv: [
-    {{id:'streisand',name:'Streisand',img:APP_ICONS['streisand'] || '',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}},
-    {{id:'shadowrocket',name:'Shadowrocket',img:APP_ICONS['shadowrocket'] || '',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}}
+    {{id:'streisand',name:'Streisand',emoji:'🌹',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}},
+    {{id:'shadowrocket',name:'Shadowrocket',emoji:'🚀',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}}
   ]
 }};
 
-function showPlat(p,btn){{
-  document.querySelectorAll('.plat-btn').forEach(b=>b.classList.remove('on'));
-  if(btn)btn.classList.add('on');
-  const list=CATALOG[p]||[];
-  document.getElementById('appsGrid').innerHTML=list.map(a=>{{
-    const img = a.img ? `<img src="${{a.img}}" alt="${{a.name}}" loading="lazy" onerror="this.parentElement.innerHTML='<span style=\\'font-size:24px;font-weight:800;color:white\\'>${{a.name.charAt(0)}}</span>'"/>` : `<span style="font-size:24px;font-weight:800;color:white">${{a.name.charAt(0)}}</span>`;
-    return `<div class="app" onclick="oaApp('${{a.id}}','${{p}}')"><span class="badge">＋</span><div class="app-photo" style="background:${{a.bg}}">${{img}}</div><div class="app-name">${{a.name}}</div></div>`;
-  }}).join('');
+// Load app icon from server
+async function getAppIcon(appId) {{
+    try {{
+        const response = await fetch(`/api/app-icon/${{appId}}`);
+        if (response.ok) {{
+            const data = await response.json();
+            return data.url;
+        }}
+    }} catch (e) {{
+        console.log('Icon load failed:', e);
+    }}
+    return null;
 }}
-function oaApp(id,plat){{
-  const a=(CATALOG[plat]||[]).find(x=>x.id===id);
-  if(!a)return;
-  if(!a.s){{cp(SUB);toast(lang==='fa'?'لینک ساب کپی شد — در برنامه Import کن':'Sub copied — import in app');return}}
-  try{{location.href=a.s}}catch(e){{}}
-  setTimeout(()=>{{cp(SUB);toast(lang==='fa'?'اگر باز نشد، ساب کپی شد':'If app did not open, sub was copied')}},900);
+
+// Show platform with real icons
+async function showPlat(p, btn) {{
+    document.querySelectorAll('.plat-btn').forEach(b => b.classList.remove('on'));
+    if (btn) btn.classList.add('on');
+    
+    const list = CATALOG[p] || [];
+    const grid = document.getElementById('appsGrid');
+    grid.innerHTML = list.map(a => `
+        <div class="app" onclick="oaApp('${{a.id}}','${{p}}')" id="app-${{a.id}}">
+            <span class="badge">＋</span>
+            <div class="app-photo" style="background:${{a.bg}}">
+                <div class="loading-icon"></div>
+            </div>
+            <div class="app-name">${{a.name}}</div>
+        </div>
+    `).join('');
+    
+    // Load icons
+    for (const a of list) {{
+        const iconUrl = await getAppIcon(a.id);
+        const photoDiv = document.querySelector(`#app-${{a.id}} .app-photo`);
+        if (iconUrl) {{
+            photoDiv.innerHTML = `<img src="${{iconUrl}}" alt="${{a.name}}" 
+                onerror="this.parentElement.innerHTML='<span class=\\'fallback\\'>${{a.emoji}}</span>'" 
+                style="width:100%;height:100%;object-fit:cover;display:block;border-radius:14px"/>`;
+        }} else {{
+            photoDiv.innerHTML = `<span class="fallback">${{a.emoji}}</span>`;
+        }}
+    }}
 }}
+
+function oaApp(id, plat) {{
+    const a = (CATALOG[plat] || []).find(x => x.id === id);
+    if (!a) return;
+    if (!a.s) {{
+        cp(SUB);
+        toast(lang === 'fa' ? 'لینک ساب کپی شد — در برنامه Import کن' : 'Sub copied — import in app');
+        return;
+    }}
+    try {{
+        location.href = a.s;
+    }} catch(e) {{}}
+    setTimeout(() => {{
+        cp(SUB);
+        toast(lang === 'fa' ? 'اگر باز نشد، ساب کپی شد' : 'If app did not open, sub was copied');
+    }}, 900);
+}}
+
 function cp(t){{navigator.clipboard?navigator.clipboard.writeText(t).then(()=>toast(lang==='fa'?'کپی شد':'Copied')):(()=>{{const i=document.createElement('input');i.value=t;document.body.appendChild(i);i.select();document.execCommand('copy');document.body.removeChild(i);toast('OK')}})()}}
 function share(){{navigator.share?navigator.share({{title:'VROOM',url:SUB}}).catch(()=>cp(SUB)):cp(SUB)}}
 function toast(m){{const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2400)}}
