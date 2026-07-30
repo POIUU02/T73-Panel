@@ -58,7 +58,6 @@ CUSTOM_DOMAIN_LOCK = asyncio.Lock()
 TELEGRAM: dict = {"token": os.environ.get("TELEGRAM_BOT_TOKEN", ""), "admin_ids": [], "enabled": False, "offset": 0}
 TELEGRAM_LOCK = asyncio.Lock()
 TELEGRAM_TASK = None
-# user_id -> pending create state {step, label, limit, days}
 TG_STATE: dict = {}
 
 SESSION_COOKIE = "vroom_session"
@@ -187,7 +186,6 @@ async def close_connections_for_link(uid: str):
 
 # ====== TELEGRAM HELPERS ======
 def ikb(rows):
-    """Build inline keyboard. rows = list of list of (text, callback_data)"""
     return {"inline_keyboard": [[{"text": t, "callback_data": c} for t, c in row] for row in rows]}
 
 
@@ -249,7 +247,6 @@ async def handle_callback(cq: dict):
 
     await tg_answer(cq_id)
 
-    # ----- MAIN -----
     if data == "menu":
         TG_STATE.pop(user_id, None)
         await tg_edit(chat_id, message_id, "🚀 <b>VROOM Bot</b>\n\nاز دکمه‌های شیشه‌ای استفاده کن:", reply_markup=main_menu_kb())
@@ -290,7 +287,6 @@ async def handle_callback(cq: dict):
         await tg_edit(chat_id, message_id, text, reply_markup=ikb([[("🔄 بروزرسانی", "stats"), ("🏠 منو", "menu")]]))
         return
 
-    # ----- LIST -----
     if data == "list":
         async with LINKS_LOCK:
             items = list(LINKS.items())
@@ -366,7 +362,6 @@ async def handle_callback(cq: dict):
         await tg_edit(chat_id, message_id, f"✅ «{uid}» حذف شد.", reply_markup=ikb([[("📋 لیست", "list"), ("🏠 منو", "menu")]]))
         return
 
-    # ----- SUB MENU -----
     if data == "sub_menu":
         async with LINKS_LOCK:
             items = list(LINKS.keys())[:12]
@@ -378,7 +373,6 @@ async def handle_callback(cq: dict):
         await tg_edit(chat_id, message_id, "🔗 روی نام بزن تا لینک ساب بیاد:", reply_markup=ikb(rows))
         return
 
-    # ----- CREATE FLOW (buttons only) -----
     if data == "create_start":
         TG_STATE[user_id] = {"step": "label"}
         await tg_edit(chat_id, message_id, "➕ <b>ساخت کانفیگ</b>\n\nنام اینباند رو با دکمه انتخاب کن یا از کیبورد سریع:", reply_markup=ikb([
@@ -465,7 +459,6 @@ async def handle_callback(cq: dict):
         ]))
         return
 
-    # ----- QUICK SETTINGS -----
     if data == "quick_settings":
         await tg_edit(chat_id, message_id, "⚙️ <b>تنظیمات سریع</b>", reply_markup=ikb([
             [("🔄 ریست همه مصرف‌ها", "reset_all_ask")],
@@ -511,7 +504,6 @@ async def handle_tg_message(msg: dict):
         await tg_send(chat_id, "⛔ دسترسی ندارید.")
         return
 
-    # Any other text → show menu
     await tg_send(chat_id, "از دکمه‌ها استفاده کن 👇", reply_markup=main_menu_kb())
 
 
@@ -988,22 +980,38 @@ footer b{{background:linear-gradient(135deg,var(--gold),var(--gold2));-webkit-ba
   <div class="quick-grid">
     <div class="quick-item" onclick="openApp('hiddify')">
       <span class="q-badge">+</span>
-      <div class="q-icon"><img src="https://raw.githubusercontent.com/hiddify/hiddify-app/main/docs/logo.png" alt="Hiddify" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22%3E%3Crect width=%2248%22 height=%2248%22 rx=%2212%22 fill=%22%23455FE9%22/%3E%3Ctext x=%2224%22 y=%2231%22 text-anchor=%22middle%22 fill=%22%23fff%22 font-size=%2216%22 font-weight=%22800%22 font-family=%22Arial%22%3EH%3C/text%3E%3C/svg%3E'"></div>
+      <div class="q-icon">
+        <img src="https://raw.githubusercontent.com/hiddify/hiddify-app/main/docs/logo.png" 
+             alt="Hiddify"
+             onerror="this.src='https://ui-avatars.com/api/?name=Hiddify&size=45&background=455FE9&color=fff&font-size=0.5&bold=true&rounded=true'">
+      </div>
       <span class="q-name">Hiddify</span>
     </div>
     <div class="quick-item" onclick="openApp('v2rayng')">
       <span class="q-badge">+</span>
-      <div class="q-icon"><img src="https://raw.githubusercontent.com/2dust/v2rayNG/master/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png" alt="v2rayNG" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22%3E%3Crect width=%2248%22 height=%2248%22 rx=%2212%22 fill=%22%231E88E5%22/%3E%3Ctext x=%2224%22 y=%2231%22 text-anchor=%22middle%22 fill=%22%23fff%22 font-size=%2216%22 font-weight=%22800%22 font-family=%22Arial%22%3EV%3C/text%3E%3C/svg%3E'"></div>
+      <div class="q-icon">
+        <img src="https://raw.githubusercontent.com/2dust/v2rayNG/master/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png" 
+             alt="v2rayNG"
+             onerror="this.src='https://ui-avatars.com/api/?name=v2rayNG&size=45&background=1E88E5&color=fff&font-size=0.5&bold=true&rounded=true'">
+      </div>
       <span class="q-name">v2rayNG</span>
     </div>
     <div class="quick-item" onclick="openApp('v2box')">
       <span class="q-badge">+</span>
-      <div class="q-icon"><img src="https://is1-ssl.mzstatic.com/image/thumb/Purple116/v4/8e/9b/9b/8e9b9b8e-9b8e-9b8e-9b8e-9b8e9b9b8e9b/AppIcon-0-0-1x_U007emarketing-0-0-0-7-0-0-sRGB-0-0-0-GLES2_U002c0-512MB-85-220-0-0.png/512x512bb.jpg" alt="V2Box" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22%3E%3Crect width=%2248%22 height=%2248%22 rx=%2212%22 fill=%22%236C5CE7%22/%3E%3Ctext x=%2224%22 y=%2231%22 text-anchor=%22middle%22 fill=%22%23fff%22 font-size=%2216%22 font-weight=%22800%22 font-family=%22Arial%22%3EV2%3C/text%3E%3C/svg%3E'"></div>
+      <div class="q-icon">
+        <img src="https://is1-ssl.mzstatic.com/image/thumb/Purple116/v4/8e/9b/9b/8e9b9b8e-9b8e-9b8e-9b8e-9b8e9b9b8e9b/AppIcon-0-0-1x_U007emarketing-0-0-0-7-0-0-sRGB-0-0-0-GLES2_U002c0-512MB-85-220-0-0.png/512x512bb.jpg" 
+             alt="V2Box"
+             onerror="this.src='https://ui-avatars.com/api/?name=V2Box&size=45&background=6C5CE7&color=fff&font-size=0.5&bold=true&rounded=true'">
+      </div>
       <span class="q-name">V2Box</span>
     </div>
     <div class="quick-item" onclick="openApp('clash')">
       <span class="q-badge">+</span>
-      <div class="q-icon"><img src="https://raw.githubusercontent.com/MetaCubeX/ClashMetaForAndroid/master/app/src/main/ic_launcher-playstore.png" alt="Clash" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22%3E%3Crect width=%2248%22 height=%2248%22 rx=%2212%22 fill=%22%23D63031%22/%3E%3Ctext x=%2224%22 y=%2231%22 text-anchor=%22middle%22 fill=%22%23fff%22 font-size=%2216%22 font-weight=%22800%22 font-family=%22Arial%22%3EC%3C/text%3E%3C/svg%3E'"></div>
+      <div class="q-icon">
+        <img src="https://raw.githubusercontent.com/MetaCubeX/ClashMetaForAndroid/master/app/src/main/ic_launcher-playstore.png" 
+             alt="Clash"
+             onerror="this.src='https://ui-avatars.com/api/?name=Clash&size=45&background=D63031&color=fff&font-size=0.5&bold=true&rounded=true'">
+      </div>
       <span class="q-name">Clash</span>
     </div>
   </div>
@@ -1259,7 +1267,18 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .sys{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 .sys .box{background:rgba(0,0,0,.25);border-radius:10px;padding:10px;text-align:center;border:1px solid var(--b)}.sys .box .v{font-size:16px;font-weight:800}.sys .box .l{font-size:9px;color:var(--t2)}
-@media(max-width:768px){.side{transform:translateX(100%)}.side.open{transform:translateX(0)}.main{margin-right:0;padding-top:56px}.stats{grid-template-columns:1fr 1fr}.mob{display:flex}.sys{grid-template-columns:1fr 1fr}}
+.chart-container{position:relative;height:120px;margin-top:8px}
+.chart-line{display:flex;align-items:flex-end;gap:4px;height:80px;padding-top:8px}
+.chart-bar{flex:1;background:linear-gradient(180deg,#ffd700,#f7971e);border-radius:4px 4px 0 0;min-height:4px;transition:height .8s ease;position:relative}
+.chart-bar:hover{opacity:.8}
+.chart-label{font-size:8px;color:var(--t2);text-align:center;margin-top:4px}
+.stats-circle{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:8px 0}
+.stat-circle{text-align:center;position:relative}
+.stat-circle .circle{width:64px;height:64px;border-radius:50%;margin:0 auto 4px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;position:relative}
+.stat-circle .circle svg{position:absolute;top:0;left:0;width:100%;height:100%;transform:rotate(-90deg)}
+.stat-circle .circle .inner{position:relative;z-index:1;font-size:13px;font-weight:800}
+.stat-circle .label{font-size:9px;color:var(--t2)}
+@media(max-width:768px){.side{transform:translateX(100%)}.side.open{transform:translateX(0)}.main{margin-right:0;padding-top:56px}.stats{grid-template-columns:1fr 1fr}.mob{display:flex}.sys{grid-template-columns:1fr 1fr}.stats-circle{grid-template-columns:1fr 1fr 1fr}}
 </style></head>
 <body>
 <div class="mob"><span style="font-weight:900;background:linear-gradient(135deg,#ffd700,#f7971e);-webkit-background-clip:text;-webkit-text-fill-color:transparent">VROOM</span><button class="btn bo" onclick="document.querySelector('.side').classList.toggle('open')">☰</button></div>
@@ -1278,25 +1297,34 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 <main class="main">
 <section class="page on" id="p-dash">
   <div class="pt">داشبورد</div>
+  
   <div class="stats">
-    <div class="st"><div class="l">ترافیک</div><div class="v" id="s-tr">--</div></div>
-    <div class="st"><div class="l">اینباند</div><div class="v" id="s-lk">--</div></div>
-    <div class="st"><div class="l">اتصال</div><div class="v" id="s-cn">--</div></div>
+    <div class="st"><div class="l">ترافیک کل</div><div class="v" id="s-tr">--</div></div>
+    <div class="st"><div class="l">اینباندها</div><div class="v" id="s-lk">--</div></div>
+    <div class="st"><div class="l">اتصالات</div><div class="v" id="s-cn">--</div></div>
     <div class="st"><div class="l">آپتایم</div><div class="v" id="s-up" style="font-size:13px">--</div></div>
   </div>
-  <div class="card"><h3>منابع سیستم</h3>
+  
+  <div class="card"><h3>📈 ترافیک ساعتی</h3>
+    <div class="chart-container">
+      <div class="chart-line" id="trafficChart"></div>
+    </div>
+  </div>
+  
+  <div class="card"><h3>🔄 وضعیت سیستم</h3>
     <div class="sys">
       <div class="box"><div class="v" id="s-cpu">--</div><div class="l">CPU</div></div>
       <div class="box"><div class="v" id="s-ram">--</div><div class="l">RAM</div></div>
       <div class="box"><div class="v" id="s-disk">--</div><div class="l">DISK</div></div>
     </div>
   </div>
-  <div class="card"><h3>ساخت سریع</h3>
+  
+  <div class="card"><h3>🎯 ساخت سریع</h3>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button class="btn bg" onclick="qc(1)">+1GB / ۳۰روز</button>
       <button class="btn bg" onclick="qc(5)">+5GB / ۳۰روز</button>
       <button class="btn bg" onclick="qc(10)">+10GB / ۳۰روز</button>
-      <button class="btn bo" onclick="resetAll()">ریست همه مصرف‌ها</button>
+      <button class="btn bo" onclick="resetAll()">ریست مصرف‌ها</button>
     </div>
   </div>
 </section>
@@ -1374,9 +1402,29 @@ function go(id){
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600)}
 async function loadS(){
   try{const r=await fetch('/stats');if(!r.ok)return;const d=await r.json();
-  $('#s-tr').textContent=d.total_traffic_mb+' MB';$('#s-lk').textContent=d.links_count;$('#s-cn').textContent=d.active_connections;$('#s-up').textContent=d.uptime;
-  $('#s-cpu').textContent=(d.cpu_percent||0).toFixed(0)+'%';$('#s-ram').textContent=(d.memory_percent||0).toFixed(0)+'%';$('#s-disk').textContent=(d.disk_percent||0).toFixed(0)+'%';
-  window._conns=d.connections_detail||[]}catch(e){}
+  $('#s-tr').textContent=d.total_traffic_mb+' MB';
+  $('#s-lk').textContent=d.links_count;
+  $('#s-cn').textContent=d.active_connections;
+  $('#s-up').textContent=d.uptime;
+  $('#s-cpu').textContent=(d.cpu_percent||0).toFixed(0)+'%';
+  $('#s-ram').textContent=(d.memory_percent||0).toFixed(0)+'%';
+  $('#s-disk').textContent=(d.disk_percent||0).toFixed(0)+'%';
+  window._conns=d.connections_detail||[];
+  
+  // Update traffic chart
+  const trafficData = d.hourly_traffic || {};
+  const hours = Object.keys(trafficData).slice(-12);
+  const values = hours.map(h => trafficData[h] || 0);
+  const maxVal = Math.max(...values, 1);
+  const chart = document.getElementById('trafficChart');
+  chart.innerHTML = hours.map((h,i) => {
+    const pct = (values[i]/maxVal)*80;
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div class="chart-bar" style="height:${Math.max(4,pct)}px" title="${(values[i]/1024/1024).toFixed(2)} MB"></div>
+      <div class="chart-label">${h.slice(0,5)}</div>
+    </div>`;
+  }).join('');
+  }catch(e){}
 }
 async function loadL(){
   const r=await fetch('/api/links');const d=await r.json();const b=$('#lb');
