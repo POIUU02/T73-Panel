@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 VROOM Panel v4.0 — Full Button Telegram Bot + Live Dashboard
@@ -847,16 +848,20 @@ footer{{margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,215,0,.08
 footer b{{background:linear-gradient(135deg,var(--gold),var(--gold2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
 .toast{{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:rgba(10,10,18,.95);padding:12px 22px;border-radius:12px;font-size:13px;color:var(--gold);opacity:0;transition:.35s;border:1px solid rgba(255,215,0,.25);z-index:9999;font-weight:700}}
 .toast.show{{opacity:1;transform:translateX(-50%) translateY(0)}}
-.menu{{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10001;display:none;align-items:flex-end;justify-content:center}}
-.menu.show{{display:flex}}.ms{{background:#12121f;border-radius:24px 24px 0 0;padding:20px;width:100%;max-width:500px;border:1px solid rgba(255,215,0,.15)}}
-.ms h4{{text-align:center;color:var(--gold);margin-bottom:12px}}.mi{{padding:13px;background:rgba(255,255,255,.04);border-radius:12px;margin-bottom:8px;cursor:pointer;font-size:13px;font-weight:600;border:1px solid rgba(255,215,0,.08)}}
+.menu{{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10001;display:none;align-items:flex-end;justify-content:center;padding:0}}
+.menu.show{{display:flex !important}}
+.ms{{background:#12121f;border-radius:24px 24px 0 0;padding:20px 16px 28px;width:100%;max-width:500px;border:1px solid rgba(255,215,0,.15);box-shadow:0 -8px 40px rgba(0,0,0,.5)}}
+.ms h4{{text-align:center;color:var(--gold);margin-bottom:14px;font-size:15px}}
+.mi{{padding:14px 16px;background:rgba(255,255,255,.05);border-radius:14px;margin-bottom:8px;cursor:pointer;font-size:14px;font-weight:600;border:1px solid rgba(255,215,0,.1);transition:background .15s;user-select:none;-webkit-user-select:none}}
+.mi:active{{background:rgba(255,215,0,.15)}}
+.mi.close-btn{{color:#f87171;text-align:center;margin-top:4px}}
 </style></head><body>
 <div class="container">
 <header>
   <div class="logo"><b>VROOM</b><span>PANEL</span></div>
   <div style="display:flex;gap:6px">
-    <button class="icon-btn" onclick="location.reload()">🔄</button>
-    <button class="icon-btn" onclick="document.getElementById('menu').classList.add('show')">☰</button>
+    <button type="button" class="icon-btn" id="btnRefresh" title="بروزرسانی">🔄</button>
+    <button type="button" class="icon-btn" id="btnMenu" title="منو">☰</button>
   </div>
 </header>
 <h1 class="main-title">Subscription</h1>
@@ -914,25 +919,137 @@ footer b{{background:linear-gradient(135deg,var(--gold),var(--gold2));-webkit-ba
 <img style="width:min(80vw,300px);border-radius:16px;border:2px solid rgba(255,215,0,.4)" src="https://api.qrserver.com/v1/create-qr-code/?size=360x360&data={qr_data}">
 </div>
 <div class="toast" id="toast"></div>
-<div class="menu" id="menu" onclick="if(event.target===this)this.classList.remove('show')">
-  <div class="ms">
+<div class="menu" id="menu">
+  <div class="ms" id="menuSheet">
     <h4>منو</h4>
-    <div class="mi" onclick="cp(SUB,'کپی شد');document.getElementById('menu').classList.remove('show')">📥 کپی لینک ساب</div>
-    <div class="mi" onclick="cp(CFG,'کپی شد');document.getElementById('menu').classList.remove('show')">📋 کپی کانفیگ</div>
-    <div class="mi" onclick="share();document.getElementById('menu').classList.remove('show')">↗ اشتراک</div>
-    <div class="mi" onclick="location.reload()">🔄 بروزرسانی</div>
-    <div class="mi" style="color:#f87171;text-align:center" onclick="document.getElementById('menu').classList.remove('show')">بستن</div>
+    <div class="mi" data-act="copy-sub">📥 کپی لینک ساب</div>
+    <div class="mi" data-act="copy-cfg">📋 کپی کانفیگ</div>
+    <div class="mi" data-act="share">↗ اشتراک‌گذاری</div>
+    <div class="mi" data-act="reload">🔄 بروزرسانی وضعیت</div>
+    <div class="mi close-btn" data-act="close">بستن</div>
   </div>
 </div>
 <script>
-const SUB='{sub_url}',CFG=`{server_link}`,P={percent};
-const apps={{hiddify:{{s:'hiddify://import/'+encodeURIComponent(SUB),d:'https://github.com/hiddify/hiddify-app/releases/latest'}},v2rayng:{{s:'v2rayng://install-config?url='+encodeURIComponent(SUB),d:'https://github.com/2dust/v2rayNG/releases/latest'}},v2box:{{s:'v2box://install-config?url='+encodeURIComponent(SUB),d:'https://apps.apple.com/app/v2box-v2ray-client/id6446814690'}},clash:{{s:'clash://install-config?url='+encodeURIComponent(SUB),d:'https://github.com/MetaCubeX/ClashMetaForAndroid/releases/latest'}}}};
-function oa(n){{const a=apps[n];if(!a)return;if(a.s){{const t=Date.now();location.href=a.s;setTimeout(()=>{{if(Date.now()-t<1600){{toast('برنامه نیست → دانلود');setTimeout(()=>open(a.d,'_blank'),600)}}}},1400)}}else open(a.d,'_blank')}}
-function cp(t,m){{navigator.clipboard?navigator.clipboard.writeText(t).then(()=>toast(m)):(()=>{{const i=document.createElement('input');i.value=t;document.body.appendChild(i);i.select();document.execCommand('copy');document.body.removeChild(i);toast(m)}})()}}
-function share(){{navigator.share?navigator.share({{title:'VROOM',url:SUB}}).catch(()=>cp(SUB,'کپی شد')):cp(SUB,'کپی شد')}}
-function toast(m){{const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500)}}
-setTimeout(()=>{{document.getElementById('uc').style.background=`conic-gradient(#3b82f6 0% ${{P}}%,rgba(30,41,59,.9) ${{P}}% 100%)`;document.getElementById('ub').style.width=P+'%';document.getElementById('pct').textContent=P+'%'}},300);
+(function(){{
+  var SUB = {json.dumps(sub_url)};
+  var CFG = {json.dumps(server_link)};
+  var P = {percent};
+
+  var apps = {{
+    hiddify: {{s: 'hiddify://import/' + encodeURIComponent(SUB), d: 'https://github.com/hiddify/hiddify-app/releases/latest'}},
+    v2rayng: {{s: 'v2rayng://install-config?url=' + encodeURIComponent(SUB), d: 'https://github.com/2dust/v2rayNG/releases/latest'}},
+    v2box: {{s: 'v2box://install-config?url=' + encodeURIComponent(SUB), d: 'https://apps.apple.com/app/v2box-v2ray-client/id6446814690'}},
+    clash: {{s: 'clash://install-config?url=' + encodeURIComponent(SUB), d: 'https://github.com/MetaCubeX/ClashMetaForAndroid/releases/latest'}}
+  }};
+
+  function toast(m) {{
+    var t = document.getElementById('toast');
+    if (!t) return;
+    t.textContent = m;
+    t.classList.add('show');
+    setTimeout(function(){{ t.classList.remove('show'); }}, 2500);
+  }}
+
+  function cp(text, msg) {{
+    if (navigator.clipboard && navigator.clipboard.writeText) {{
+      navigator.clipboard.writeText(text).then(function(){{ toast(msg); }}).catch(function(){{ fallbackCopy(text, msg); }});
+    }} else {{
+      fallbackCopy(text, msg);
+    }}
+  }}
+
+  function fallbackCopy(text, msg) {{
+    var i = document.createElement('textarea');
+    i.value = text;
+    i.style.position = 'fixed';
+    i.style.left = '-9999px';
+    document.body.appendChild(i);
+    i.select();
+    try {{ document.execCommand('copy'); toast(msg); }} catch(e) {{ toast('خطا در کپی'); }}
+    document.body.removeChild(i);
+  }}
+
+  function share() {{
+    if (navigator.share) {{
+      navigator.share({{ title: 'VROOM', url: SUB }}).catch(function(){{ cp(SUB, 'لینک کپی شد'); }});
+    }} else {{
+      cp(SUB, 'لینک کپی شد');
+    }}
+  }}
+
+  function openMenu() {{
+    var m = document.getElementById('menu');
+    if (m) m.classList.add('show');
+  }}
+  function closeMenu() {{
+    var m = document.getElementById('menu');
+    if (m) m.classList.remove('show');
+  }}
+
+  function oa(n) {{
+    var a = apps[n];
+    if (!a) return;
+    if (a.s) {{
+      var t = Date.now();
+      window.location.href = a.s;
+      setTimeout(function() {{
+        if (Date.now() - t < 1600) {{
+          toast('برنامه پیدا نشد → دانلود');
+          setTimeout(function(){{ window.open(a.d, '_blank'); }}, 600);
+        }}
+      }}, 1400);
+    }} else {{
+      window.open(a.d, '_blank');
+    }}
+  }}
+
+  // bind header buttons
+  var btnMenu = document.getElementById('btnMenu');
+  var btnRefresh = document.getElementById('btnRefresh');
+  if (btnMenu) btnMenu.addEventListener('click', function(e){{ e.preventDefault(); openMenu(); }});
+  if (btnRefresh) btnRefresh.addEventListener('click', function(e){{ e.preventDefault(); location.reload(); }});
+
+  // menu backdrop close
+  var menuEl = document.getElementById('menu');
+  if (menuEl) {{
+    menuEl.addEventListener('click', function(e) {{
+      if (e.target === menuEl) closeMenu();
+    }});
+  }}
+
+  // menu items
+  document.querySelectorAll('.mi[data-act]').forEach(function(el) {{
+    el.addEventListener('click', function(e) {{
+      e.preventDefault();
+      e.stopPropagation();
+      var act = el.getAttribute('data-act');
+      if (act === 'copy-sub') {{ cp(SUB, 'لینک ساب کپی شد'); closeMenu(); }}
+      else if (act === 'copy-cfg') {{ cp(CFG, 'کانفیگ کپی شد'); closeMenu(); }}
+      else if (act === 'share') {{ share(); closeMenu(); }}
+      else if (act === 'reload') {{ location.reload(); }}
+      else if (act === 'close') {{ closeMenu(); }}
+    }});
+  }});
+
+  // row / config box / buttons that use inline onclick still need global helpers
+  window.cp = cp;
+  window.share = share;
+  window.oa = oa;
+  window.SUB = SUB;
+  window.CFG = CFG;
+
+  // animate usage
+  setTimeout(function() {{
+    var uc = document.getElementById('uc');
+    var ub = document.getElementById('ub');
+    var pct = document.getElementById('pct');
+    if (uc) uc.style.background = 'conic-gradient(#3b82f6 0% ' + P + '%, rgba(30,41,59,.9) ' + P + '% 100%)';
+    if (ub) ub.style.width = P + '%';
+    if (pct) pct.textContent = P + '%';
+  }}, 300);
+}})();
 </script></body></html>"""
+
     return HTMLResponse(content=html)
 
 
@@ -1155,18 +1272,19 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,.04)}
 @media(max-width:768px){.sb{transform:translateX(100%)}.sb.open{transform:translateX(0)}.main{margin-right:0;padding-top:56px}.live-grid{grid-template-columns:1fr 1fr}.mb{display:flex}}
 </style></head><body>
 <div class="mb"><span style="font-weight:900;background:linear-gradient(135deg,#ffd700,#f7971e);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter">VROOM</span>
-<button class="btn bo" onclick="document.querySelector('.sb').classList.toggle('open')">☰</button></div>
-<aside class="sb">
+<button type="button" class="btn bo" id="btnSide">☰</button></div>
+<aside class="sb" id="sidebar">
 <div class="brand">VROOM</div>
-<button class="ni on" data-p="dash">📊 داشبورد زنده</button>
-<button class="ni" data-p="links">📡 اینباندها</button>
-<button class="ni" data-p="conns">👥 اتصالات</button>
-<button class="ni" data-p="tg">🤖 ربات تلگرام</button>
-<button class="ni" data-p="domain">🌐 دامنه</button>
-<button class="ni" data-p="sec">🔒 امنیت</button>
+<button type="button" class="ni on" data-p="dash">📊 داشبورد زنده</button>
+<button type="button" class="ni" data-p="links">📡 اینباندها</button>
+<button type="button" class="ni" data-p="conns">👥 اتصالات</button>
+<button type="button" class="ni" data-p="tg">🤖 ربات تلگرام</button>
+<button type="button" class="ni" data-p="domain">🌐 دامنه</button>
+<button type="button" class="ni" data-p="sec">🔒 امنیت</button>
 <div style="flex:1"></div>
-<button class="ni" style="color:var(--rd)" onclick="fetch('/api/logout',{method:'POST'}).then(()=>location='/login')">خروج</button>
+<button type="button" class="ni" id="btnLogout" style="color:var(--rd)">خروج</button>
 </aside>
+<div id="sideOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:49"></div>
 <main class="main">
 
 <section class="pg on" id="p-dash">
@@ -1277,18 +1395,42 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,.04)}
 
 <script>
 const $=s=>document.querySelector(s);
-document.querySelectorAll('.ni[data-p]').forEach(el=>el.onclick=()=>go(el.dataset.p));
 function go(id){
   document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));
-  document.getElementById('p-'+id)?.classList.add('on');
+  const page=document.getElementById('p-'+id);
+  if(page) page.classList.add('on');
   document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('on',n.dataset.p===id));
-  document.querySelector('.sb')?.classList.remove('open');
-  if(id==='links')loadLinks();
-  if(id==='conns')loadConns();
-  if(id==='tg')loadTg();
-  if(id==='domain')loadDom();
+  closeSide();
+  if(id==='links') loadLinks();
+  if(id==='conns') loadConns();
+  if(id==='tg') loadTg();
+  if(id==='domain') loadDom();
 }
-function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2800)}
+function openSide(){
+  const sb=document.getElementById('sidebar');
+  const ov=document.getElementById('sideOverlay');
+  if(sb) sb.classList.add('open');
+  if(ov) ov.style.display='block';
+}
+function closeSide(){
+  const sb=document.getElementById('sidebar');
+  const ov=document.getElementById('sideOverlay');
+  if(sb) sb.classList.remove('open');
+  if(ov) ov.style.display='none';
+}
+function toast(m){const t=$('#toast');if(!t)return;t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2800)}
+
+// bind nav + mobile menu
+document.querySelectorAll('.ni[data-p]').forEach(el=>{
+  el.addEventListener('click', function(e){ e.preventDefault(); go(el.dataset.p); });
+});
+const btnSide=document.getElementById('btnSide');
+if(btnSide) btnSide.addEventListener('click', function(e){ e.preventDefault(); const sb=document.getElementById('sidebar'); if(sb&&sb.classList.contains('open')) closeSide(); else openSide(); });
+const sideOverlay=document.getElementById('sideOverlay');
+if(sideOverlay) sideOverlay.addEventListener('click', closeSide);
+const btnLogout=document.getElementById('btnLogout');
+if(btnLogout) btnLogout.addEventListener('click', function(){ fetch('/api/logout',{method:'POST'}).then(()=>location.href='/login'); });
+
 
 async function loadStats(){
   try{
@@ -1315,72 +1457,5 @@ async function loadLinks(){
   const b=$('#lb');
   if(!d.links?.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--t2)">خالی</td></tr>';return}
   b.innerHTML=d.links.map(l=>{
-    const u=(l.used_bytes/1e9).toFixed(2),lim=l.limit_bytes?(l.limit_bytes/1e9).toFixed(1)+'G':'∞';
-    return `<tr>
-      <td><b>${l.label}</b></td>
-      <td>${u}/${lim}</td>
-      <td>${l.current_connections}${l.max_connections?'/'+l.max_connections:''}</td>
-      <td><span class="tag ${l.active&&!l.expired?'ton':'toff'}">${l.active&&!l.expired?'فعال':'خاموش'}</span></td>
-      <td style="display:flex;gap:4px;flex-wrap:wrap">
-        <button class="btn bo" style="padding:3px 8px;font-size:10px" onclick="navigator.clipboard.writeText(location.origin+'/sub/'+ '${l.uuid}').then(()=>toast('ساب کپی'))">ساب</button>
-        <button class="btn bo" style="padding:3px 8px;font-size:10px" onclick="navigator.clipboard.writeText('${l.vless_link.replace(/'/g,"\\\\'")}').then(()=>toast('کانفیگ کپی'))">کپی</button>
-        <button class="btn bd" style="padding:3px 8px;font-size:10px" onclick="delL('${l.uuid}')">حذف</button>
-      </td></tr>`;
-  }).join('');
-}
-function loadConns(){loadStats()}
-async def delL(uid){if(!confirm('حذف؟'))return;await fetch('/api/links/'+uid,{method:'DELETE'});toast('حذف شد');loadLinks();loadStats()}
-async function createL(){
-  const label=$('#nl').value.trim(),limit=parseFloat($('#nlim').value)||0,unit=$('#nun').value;
-  const expiry=parseFloat($('#nexp').value)||0,maxc=parseInt($('#nmax').value)||0;
-  if(!label){toast('نام لازم');return}
-  const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,limit_value:limit,limit_unit:unit,expiry_days:expiry,max_connections:maxc})});
-  if(!r.ok){const e=await r.json().catch(()=>({}));toast(e.detail||'خطا');return}
-  toast('ساخته شد');$('#addM').classList.remove('on');loadLinks();loadStats();
-}
-async function qc(gb){
-  const name='u'+Math.random().toString(36).slice(2,7);
-  await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:name,limit_value:gb,limit_unit:'GB',expiry_days:30})});
-  toast(name+' ساخته شد');loadStats();
-}
-async function loadTg(){
-  const r=await fetch('/api/telegram');const d=await r.json();
-  $('#tg-st').innerHTML=d.enabled?'<span style="color:var(--gn)">● ربات روشن است</span> — ادمین: '+(d.admin_ids||[]).join(', '):'<span style="color:var(--rd)">● خاموش</span>';
-  if(d.admin_ids?.length)$('#tg-adm').value=d.admin_ids.join(' ');
-}
-async function saveTg(){
-  const r=await fetch('/api/telegram',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('#tg-tok').value.trim(),admin_ids:$('#tg-adm').value.trim()})});
-  const d=await r.json().catch(()=>({}));
-  if(!r.ok){toast(d.detail||'خطا');return}
-  toast(d.enabled?'ربات روشن شد @'+(d.bot_username||''):'ذخیره شد');loadTg();
-}
-async function stopTg(){await fetch('/api/telegram/stop',{method:'POST'});toast('خاموش شد');loadTg()}
-async function loadDom(){const r=await fetch('/api/domain');const d=await r.json();$('#dom-cur').textContent='فعلی: '+(d.domain||'پیش‌فرض سرور')}
-async function saveDom(){await fetch('/api/domain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:$('#dom-in').value.trim()})});toast('ذخیره');loadDom()}
-async function chPass(){
-  const r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:$('#cpw').value,new_password:$('#npw').value})});
-  if(!r.ok){const e=await r.json().catch(()=>({}));toast(e.detail||'خطا');return}
-  toast('رمز عوض شد');
-}
-// fix delL
-async function delL(uid){if(!confirm('حذف؟'))return;await fetch('/api/links/'+uid,{method:'DELETE'});toast('حذف شد');loadLinks();loadStats()}
-loadStats();setInterval(loadStats,4000);
-</script></body></html>"""
-
-
-@app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    if await is_valid_session(request.cookies.get(SESSION_COOKIE)):
-        return RedirectResponse("/dashboard")
-    return HTMLResponse(LOGIN_HTML)
-
-
-@app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard_page(request: Request):
-    if not await is_valid_session(request.cookies.get(SESSION_COOKIE)):
-        return RedirectResponse("/login")
-    return HTMLResponse(DASHBOARD_HTML)
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=CONFIG["port"])
+    const u=(l.used_bytes/1e9).toFixed(2),lim=l.limit_bytes?(l.li
+The document content is too long to display in full
