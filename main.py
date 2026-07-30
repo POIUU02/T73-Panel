@@ -6,12 +6,12 @@ VROOM Panel v5 - با دانلود خودکار آیکون برنامه‌ها
 - Dashboard bilingual
 - Telegram button bot
 """
-import asyncio, json, os, hashlib, secrets, time, re, base64, aiohttp
+import asyncio, json, os, hashlib, secrets, time, re, base64
 from datetime import datetime, timedelta
 from urllib.parse import quote
 from collections import deque, defaultdict
 from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconnect, Depends
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn, httpx, logging, psutil
@@ -92,18 +92,18 @@ APP_ICONS = {
 }
 
 async def download_icon(app_id, url, filename):
-    """دانلود آیکون برنامه و ذخیره محلی"""
+    """دانلود آیکون برنامه و ذخیره محلی با استفاده از httpx"""
     local_path = f"static/icons/{filename}"
     
     # اگر فایل وجود دارد، نیازی به دانلود مجدد نیست
-    if os.path.exists(local_path):
+    if os.path.exists(local_path) and os.path.getsize(local_path) > 100:
         logger.info(f"✅ Icon already exists: {filename}")
         return f"/static/icons/{filename}"
     
     try:
         logger.info(f"📥 Downloading icon for {app_id} from {url}")
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(url, follow_redirects=True)
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            response = await client.get(url)
             if response.status_code == 200:
                 # ذخیره فایل
                 async with aiofiles.open(local_path, 'wb') as f:
