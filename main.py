@@ -5,7 +5,7 @@ VROOM Panel v5
 - /page/{uid} → beautiful bilingual panel + day/night + themes
 - Dashboard bilingual
 - Telegram button bot
-- Easy Import with REAL app icons
+- Easy Import with REAL app photos ONLY
 """
 import asyncio, json, os, hashlib, secrets, time, re, base64
 from datetime import datetime, timedelta
@@ -49,88 +49,78 @@ TELEGRAM = {"token": os.environ.get("TELEGRAM_BOT_TOKEN", ""), "admin_ids": [], 
 TELEGRAM_LOCK, TELEGRAM_TASK, TG_STATE = asyncio.Lock(), None, {}
 SESSION_COOKIE, SESSION_TTL = "vroom_session", 60 * 60 * 24 * 7
 
-# ========== APP ICONS DATABASE ==========
-APP_ICONS = {
+# ========== APP REAL PHOTOS ==========
+APP_PHOTOS = {
     "hiddify": {
         "url": "https://raw.githubusercontent.com/hiddify/hiddify-app/main/assets/images/app_icon.png",
-        "emoji": "🛡️",
-        "bg": "#455FE9"
+        "name": "Hiddify"
     },
     "v2rayng": {
         "url": "https://raw.githubusercontent.com/2dust/v2rayNG/master/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
-        "emoji": "📡",
-        "bg": "#1E88E5"
+        "name": "v2rayNG"
     },
     "clash": {
         "url": "https://raw.githubusercontent.com/MetaCubeX/ClashMetaForAndroid/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
-        "emoji": "⚡",
-        "bg": "#D63031"
+        "name": "Clash Meta"
     },
     "surfboard": {
         "url": "https://surfboard.tools/assets/logo.png",
-        "emoji": "🏄",
-        "bg": "#00B894"
+        "name": "Surfboard"
     },
     "v2box": {
         "url": "https://is1-ssl.mzstatic.com/image/thumb/Purple116/v4/8c/3a/8d/8c3a8d56-2b1c-8c3a-8d56-2b1c8c3a8d56/AppIcon-0-0-1x_U007emarketing-0-0-0-7-0-0-sRGB-0-0-0-GLES2_U002c0-512MB-85-220-0-0.png/512x512bb.jpg",
-        "emoji": "📦",
-        "bg": "#6C5CE7"
+        "name": "V2Box"
     },
     "shadowrocket": {
         "url": "https://raw.githubusercontent.com/Hackl0us/Shadowrocket-ADBlock-Rules/master/icon.png",
-        "emoji": "🚀",
-        "bg": "#E84393"
+        "name": "Shadowrocket"
     },
     "streisand": {
         "url": "https://raw.githubusercontent.com/StreisandEffect/streisand/master/icon.png",
-        "emoji": "🌹",
-        "bg": "#FF6B6B"
+        "name": "Streisand"
     },
     "v2rayn": {
         "url": "https://raw.githubusercontent.com/2dust/v2rayN/master/v2rayN/Resources/logo.ico",
-        "emoji": "🌐",
-        "bg": "#0984E3"
+        "name": "v2rayN"
     },
     "nekoray": {
         "url": "https://raw.githubusercontent.com/MatsuriDayo/nekoray/main/nekoray/logo.png",
-        "emoji": "🐱",
-        "bg": "#F39C12"
+        "name": "NekoRay"
     },
     "singbox": {
         "url": "https://raw.githubusercontent.com/SagerNet/sing-box/main/logo.png",
-        "emoji": "🎵",
-        "bg": "#00B894"
+        "name": "Sing-box"
     }
 }
 
-async def download_icon(app_id: str):
-    """Download app icon and save locally"""
+async def download_photo(app_id: str):
+    """Download app photo and save locally"""
     filepath = STATIC_DIR / f"{app_id}.png"
     if filepath.exists():
         return f"/static/icons/{app_id}.png"
     
-    icon_data = APP_ICONS.get(app_id)
-    if not icon_data:
+    photo_data = APP_PHOTOS.get(app_id)
+    if not photo_data:
         return None
     
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(icon_data["url"])
+            response = await client.get(photo_data["url"])
             if response.status_code == 200:
                 async with aiofiles.open(filepath, 'wb') as f:
                     await f.write(response.content)
-                logger.info(f"✅ Downloaded icon for {app_id}")
+                logger.info(f"✅ Downloaded photo for {app_id}")
                 return f"/static/icons/{app_id}.png"
     except Exception as e:
-        logger.error(f"Failed to download icon for {app_id}: {e}")
+        logger.error(f"Failed to download photo for {app_id}: {e}")
     return None
 
-@app.get("/api/app-icon/{app_id}")
-async def get_app_icon(app_id: str):
-    """API endpoint to get app icon URL"""
-    icon_path = await download_icon(app_id)
-    if icon_path:
-        return {"url": icon_path}
+@app.get("/api/app-photo/{app_id}")
+async def get_app_photo(app_id: str):
+    """API endpoint to get app photo URL"""
+    photo_path = await download_photo(app_id)
+    if photo_path:
+        return {"url": photo_path}
     return {"url": None}
 
 def hash_password(pw): return hashlib.sha256(f"{pw}{CONFIG['secret']}".encode()).hexdigest()
@@ -443,17 +433,17 @@ async def startup():
         TELEGRAM["enabled"] = True
         await start_telegram_bot()
     
-    # Download all app icons in background
-    asyncio.create_task(download_all_icons())
+    # Download all app photos in background
+    asyncio.create_task(download_all_photos())
 
-async def download_all_icons():
-    """Download all app icons in background"""
-    logger.info("📥 Downloading app icons...")
+async def download_all_photos():
+    """Download all app photos in background"""
+    logger.info("📥 Downloading app photos...")
     tasks = []
-    for app_id in APP_ICONS.keys():
-        tasks.append(download_icon(app_id))
+    for app_id in APP_PHOTOS.keys():
+        tasks.append(download_photo(app_id))
     await asyncio.gather(*tasks)
-    logger.info("✅ App icons downloaded")
+    logger.info("✅ App photos downloaded")
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -725,13 +715,8 @@ background-image:radial-gradient(ellipse at 12% 0%,rgba(155,138,251,.14),transpa
 .app-photo{{width:54px;height:54px;margin:0 auto 7px;border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;background:#1a1a2e;transition:transform .2s ease}}
 .app:hover .app-photo{{transform:scale(1.05)}}
 .app-photo img{{width:100%;height:100%;object-fit:cover;display:block;border-radius:14px}}
-.app-photo .fallback{{font-size:32px;font-weight:900;color:white}}
-.loading-icon{{width:24px;height:24px;border:3px solid rgba(255,255,255,0.1);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite}}
-@keyframes spin{{to{{transform:rotate(360deg)}}}}
 .app-name{{font-size:10px;font-weight:700;color:var(--t)}}
-.app-os{{font-size:9px;color:var(--m);margin-top:2px}}
 .badge{{position:absolute;top:6px;right:6px;font-size:9px;background:rgba(232,197,71,.22);color:var(--g);padding:2px 5px;border-radius:6px;font-weight:800}}
-.chips{{display:flex;gap:5px;flex-wrap:wrap;margin-top:10px}}.chip{{padding:4px 10px;border-radius:16px;font-size:10px;border:1px solid var(--b);color:var(--m);font-weight:600}}
 footer{{text-align:center;font-size:11px;color:var(--m);margin-top:6px;padding-top:9px;border-top:1px solid var(--b)}}
 footer b{{background:linear-gradient(135deg,var(--g),var(--ac));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
 .toast{{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(70px);background:var(--card);padding:11px 20px;border-radius:11px;font-size:12px;color:var(--g);opacity:0;transition:.3s;border:1px solid var(--b);z-index:9999;font-weight:700}}
@@ -802,68 +787,67 @@ const ST={{fa:'{status_fa}',en:'{status_en}'}}, DY={{fa:'{days_fa}',en:'{days_en
 const I18N={{fa:{{title:'Subscription',online:'سرور آنلاین',conn:'اتصالات',used:'مصرفی',status:'وضعیت',left:'باقی',subLink:'لینک ساب (برنامه‌ها)',copy:'کپی',expire:'انقضا',days:'باقی',cfg:'کانفیگ و QR',add:'＋ اضافه اشتراک',share:'اشتراک',easy:'Easy Import'}},
 en:{{title:'Subscription',online:'Server Online',conn:'Connections',used:'Used',status:'Status',left:'Left',subLink:'Sub link (for apps)',copy:'Copy',expire:'Expiry',days:'Left',cfg:'Config & QR',add:'＋ Add Sub',share:'Share',easy:'Easy Import'}}}};
 let lang=localStorage.getItem('vroom_lang')||'fa', dn=localStorage.getItem('vroom_dn')||'dark';
-
 function setLang(l){{lang=l;localStorage.setItem('vroom_lang',l);document.documentElement.lang=l;document.documentElement.dir=l==='fa'?'rtl':'ltr';
 document.getElementById('langFa').classList.toggle('on',l==='fa');document.getElementById('langEn').classList.toggle('on',l==='en');
 const t=I18N[l];document.querySelectorAll('[data-i]').forEach(el=>{{const k=el.getAttribute('data-i');if(t[k])el.textContent=t[k]}});
 document.getElementById('stTxt').textContent=ST[l];document.getElementById('st2').textContent=ST[l];document.getElementById('daysT').textContent=DY[l]}}
 function toggleDN(){{dn=dn==='dark'?'light':'dark';localStorage.setItem('vroom_dn',dn);document.documentElement.setAttribute('data-theme',dn)}}
 
-// ========== APP CATALOG WITH REAL ICONS ==========
+// ========== APP CATALOG WITH REAL PHOTOS ONLY ==========
 const CATALOG = {{
   android: [
-    {{id:'hiddify',name:'Hiddify',emoji:'🛡️',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayng',name:'v2rayNG',emoji:'📡',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'clash',name:'Clash Meta',emoji:'⚡',bg:'#D63031',s:'clash://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'surfboard',name:'Surfboard',emoji:'🏄',bg:'#00B894',s:'surfboard://import?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayng',name:'v2rayNG',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'clash',name:'Clash Meta',bg:'#D63031',s:'clash://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'surfboard',name:'Surfboard',bg:'#00B894',s:'surfboard://import?url='+encodeURIComponent(SUB)}}
   ],
   ios: [
-    {{id:'hiddify',name:'Hiddify',emoji:'🛡️',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2box',name:'V2Box',emoji:'📦',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'shadowrocket',name:'Shadowrocket',emoji:'🚀',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}},
-    {{id:'streisand',name:'Streisand',emoji:'🌹',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2box',name:'V2Box',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'shadowrocket',name:'Shadowrocket',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}},
+    {{id:'streisand',name:'Streisand',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}}
   ],
   windows: [
-    {{id:'hiddify',name:'Hiddify',emoji:'🛡️',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayn',name:'v2rayN',emoji:'🌐',bg:'#0984E3',s:'v2rayN://import?url='+encodeURIComponent(SUB)}},
-    {{id:'nekoray',name:'NekoRay',emoji:'🐱',bg:'#F39C12',s:'nekoray://import?url='+encodeURIComponent(SUB)}},
-    {{id:'singbox',name:'Sing-box',emoji:'🎵',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayn',name:'v2rayN',bg:'#0984E3',s:'v2rayN://import?url='+encodeURIComponent(SUB)}},
+    {{id:'nekoray',name:'NekoRay',bg:'#F39C12',s:'nekoray://import?url='+encodeURIComponent(SUB)}},
+    {{id:'singbox',name:'Sing-box',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
   ],
   macos: [
-    {{id:'hiddify',name:'Hiddify',emoji:'🛡️',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2box',name:'V2Box',emoji:'📦',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'singbox',name:'Sing-box',emoji:'🎵',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2box',name:'V2Box',bg:'#6C5CE7',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'singbox',name:'Sing-box',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
   ],
   linux: [
-    {{id:'hiddify',name:'Hiddify',emoji:'🛡️',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'nekoray',name:'NekoRay',emoji:'🐱',bg:'#F39C12',s:'nekoray://import?url='+encodeURIComponent(SUB)}},
-    {{id:'singbox',name:'Sing-box',emoji:'🎵',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'nekoray',name:'NekoRay',bg:'#F39C12',s:'nekoray://import?url='+encodeURIComponent(SUB)}},
+    {{id:'singbox',name:'Sing-box',bg:'#00B894',s:'sing-box://import-remote-profile?url='+encodeURIComponent(SUB)}}
   ],
   tv: [
-    {{id:'hiddify',name:'Hiddify TV',emoji:'🛡️',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayng',name:'v2rayNG',emoji:'📡',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}}
+    {{id:'hiddify',name:'Hiddify TV',bg:'#455FE9',s:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayng',name:'v2rayNG',bg:'#1E88E5',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}}
   ],
   appletv: [
-    {{id:'streisand',name:'Streisand',emoji:'🌹',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}},
-    {{id:'shadowrocket',name:'Shadowrocket',emoji:'🚀',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}}
+    {{id:'streisand',name:'Streisand',bg:'#FF6B6B',s:'streisand://import/'+encodeURIComponent(SUB)}},
+    {{id:'shadowrocket',name:'Shadowrocket',bg:'#E84393',s:'shadowrocket://add/sub://'+btoa(SUB).replace(/\\+/g,'-').replace(/\\//g,'_')}}
   ]
 }};
 
-// Load app icon from server
-async function getAppIcon(appId) {{
+// Load app photo from server
+async function getAppPhoto(appId) {{
     try {{
-        const response = await fetch(`/api/app-icon/${{appId}}`);
+        const response = await fetch(`/api/app-photo/${{appId}}`);
         if (response.ok) {{
             const data = await response.json();
             return data.url;
         }}
     }} catch (e) {{
-        console.log('Icon load failed:', e);
+        console.log('Photo load failed:', e);
     }}
     return null;
 }}
 
-// Show platform with real icons
+// Show platform with real photos
 async function showPlat(p, btn) {{
     document.querySelectorAll('.plat-btn').forEach(b => b.classList.remove('on'));
     if (btn) btn.classList.add('on');
@@ -874,22 +858,22 @@ async function showPlat(p, btn) {{
         <div class="app" onclick="oaApp('${{a.id}}','${{p}}')" id="app-${{a.id}}">
             <span class="badge">＋</span>
             <div class="app-photo" style="background:${{a.bg}}">
-                <div class="loading-icon"></div>
+                <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:10px;font-weight:700;text-align:center;padding:4px;">Loading...</div>
             </div>
             <div class="app-name">${{a.name}}</div>
         </div>
     `).join('');
     
-    // Load icons
+    // Load photos
     for (const a of list) {{
-        const iconUrl = await getAppIcon(a.id);
+        const photoUrl = await getAppPhoto(a.id);
         const photoDiv = document.querySelector(`#app-${{a.id}} .app-photo`);
-        if (iconUrl) {{
-            photoDiv.innerHTML = `<img src="${{iconUrl}}" alt="${{a.name}}" 
-                onerror="this.parentElement.innerHTML='<span class=\\'fallback\\'>${{a.emoji}}</span>'" 
+        if (photoUrl) {{
+            photoDiv.innerHTML = `<img src="${{photoUrl}}" alt="${{a.name}}" 
+                onerror="this.parentElement.innerHTML='<div style=\\'width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:10px;font-weight:700;text-align:center;padding:4px;\\'>${{a.name}}</div>'" 
                 style="width:100%;height:100%;object-fit:cover;display:block;border-radius:14px"/>`;
         }} else {{
-            photoDiv.innerHTML = `<span class="fallback">${{a.emoji}}</span>`;
+            photoDiv.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:10px;font-weight:700;text-align:center;padding:4px;">${{a.name}}</div>`;
         }}
     }}
 }}
