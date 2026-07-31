@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-VROOM Panel v5.1 - Premium Crystal Glass
+VROOM Panel v5.2 - Fixed + Premium
 - /sub/{uid} → plain-text vless
-- /page/{uid} → Ultra smooth bilingual + day/night
-- Dashboard → Full bilingual + day/night + premium glass
+- /page/{uid} → smooth bilingual + day/night
+- Dashboard → bilingual + day/night + more features
 - Telegram bot
+- WebSocket tunnel FIXED
 """
 import asyncio, json, os, hashlib, secrets, time, re, base64
 from datetime import datetime, timedelta
@@ -31,7 +32,7 @@ logger = logging.getLogger("VROOM")
 async def lifespan(app: FastAPI):
     global http_client
     http_client = httpx.AsyncClient(limits=httpx.Limits(max_connections=5000, max_keepalive_connections=1000), timeout=httpx.Timeout(180.0, connect=30.0), follow_redirects=True)
-    logger.info(f"🚀 VROOM v5.1 :{CONFIG['port']}")
+    logger.info(f"🚀 VROOM v5.2 :{CONFIG['port']}")
     asyncio.create_task(keep_alive())
     if TELEGRAM.get("token") and TELEGRAM.get("admin_ids"):
         TELEGRAM["enabled"] = True
@@ -463,7 +464,7 @@ async def start_telegram_bot():
 # ===================== API =====================
 @app.get("/")
 async def root():
-    return {"service": "VROOM", "version": "5.1", "domain": get_domain()}
+    return {"service": "VROOM", "version": "5.2", "domain": get_domain()}
 
 @app.get("/health")
 async def health():
@@ -700,7 +701,7 @@ async def subscription_raw(uid: str, request: Request):
         return Response(content=_b64.b64encode(raw.encode()).decode(), media_type="text/plain; charset=utf-8", headers=headers)
     return Response(content=raw, media_type="text/plain; charset=utf-8", headers=headers)
 
-# ===================== PAGE (Ultra Smooth) =====================
+# ===================== PAGE =====================
 @app.get("/page/{uid}")
 async def subscription_page(uid: str):
     async with LINKS_LOCK:
@@ -747,46 +748,22 @@ async def subscription_page(uid: str):
 <title>VROOM — {link['label']}</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&family=Vazirmatn:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
 <style>
-:root{{
-  --bg:#f0f4ff;--card:rgba(255,255,255,.78);--border:rgba(255,255,255,.85);
-  --text:#0f172a;--muted:#64748b;--blue:#3b82f6;--indigo:#6366f1;--pink:#ec4899;
-  --green:#10b981;--radius:22px;--shadow:0 12px 40px -10px rgba(99,102,241,.18);
-}}
-[data-theme=dark]{{
-  --bg:#0a0e1a;--card:rgba(15,23,42,.75);--border:rgba(255,255,255,.07);
-  --text:#f1f5f9;--muted:#94a3b8;--shadow:0 12px 40px -10px rgba(0,0,0,.5);
-}}
+:root{{--bg:#f0f4ff;--card:rgba(255,255,255,.8);--border:rgba(255,255,255,.9);--text:#0f172a;--muted:#64748b;--blue:#3b82f6;--indigo:#6366f1;--pink:#ec4899;--green:#10b981;--radius:22px;--shadow:0 12px 40px -10px rgba(99,102,241,.18)}}
+[data-theme=dark]{{--bg:#0a0e1a;--card:rgba(15,23,42,.78);--border:rgba(255,255,255,.07);--text:#f1f5f9;--muted:#94a3b8;--shadow:0 12px 40px -10px rgba(0,0,0,.5)}}
 *{{margin:0;padding:0;box-sizing:border-box}}
-body{{
-  font-family:Vazirmatn,Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);
-  min-height:100vh;padding:14px 12px 36px;transition:background .3s,color .3s;overflow-x:hidden;
-}}
-body::before{{
-  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:radial-gradient(ellipse 90% 55% at 8% -8%,rgba(99,102,241,.22),transparent 55%),
-             radial-gradient(ellipse 70% 45% at 96% 0%,rgba(236,72,153,.16),transparent 50%);
-}}
-[data-theme=dark] body::before{{
-  background:radial-gradient(ellipse 90% 55% at 8% -8%,rgba(99,102,241,.16),transparent 55%),
-             radial-gradient(ellipse 70% 45% at 96% 0%,rgba(236,72,153,.1),transparent 50%);
-}}
+body{{font-family:Vazirmatn,Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:14px 12px 36px;transition:background .3s,color .3s;overflow-x:hidden}}
+body::before{{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 90% 55% at 8% -8%,rgba(99,102,241,.22),transparent 55%),radial-gradient(ellipse 70% 45% at 96% 0%,rgba(236,72,153,.16),transparent 50%)}}
+[data-theme=dark] body::before{{background:radial-gradient(ellipse 90% 55% at 8% -8%,rgba(99,102,241,.16),transparent 55%),radial-gradient(ellipse 70% 45% at 96% 0%,rgba(236,72,153,.1),transparent 50%)}}
 .w{{max-width:430px;margin:0 auto;position:relative;z-index:1}}
 .hdr{{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}}
 .hdr-l{{display:flex;align-items:center;gap:8px}}
-.ib{{
-  width:38px;height:38px;border-radius:13px;background:var(--card);border:1px solid var(--border);
-  display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;
-  box-shadow:var(--shadow);backdrop-filter:blur(14px);transition:transform .15s;color:var(--text);
-}}
+.ib{{width:38px;height:38px;border-radius:13px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;box-shadow:var(--shadow);backdrop-filter:blur(14px);transition:transform .15s;color:var(--text)}}
 .ib:active{{transform:scale(.93)}}
 .ls{{display:flex;background:var(--card);border:1px solid var(--border);border-radius:13px;overflow:hidden;box-shadow:var(--shadow);backdrop-filter:blur(14px)}}
 .ls button{{border:none;padding:7px 11px;font-size:11px;font-weight:700;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;transition:.15s}}
 .ls button.on{{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff}}
 .logo{{font-family:Inter;font-weight:900;font-size:19px;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;display:flex;align-items:center;gap:5px}}
-.card{{
-  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;
-  margin-bottom:12px;box-shadow:var(--shadow);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
-}}
+.card{{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}}
 .ct{{font-size:14px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}}
 .badge{{font-size:11px;font-weight:600;color:var(--blue);background:rgba(59,130,246,.1);padding:3px 9px;border-radius:20px}}
 .sr{{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;font-size:12px;font-weight:600}}
@@ -925,7 +902,7 @@ requestAnimationFrame(()=>{{document.getElementById('rg').style.background=`coni
 </body></html>"""
     return HTMLResponse(content=html)
 
-# ===================== WS =====================
+# ===================== WS (FIXED) =====================
 RELAY_BUF = 2 * 1024 * 1024
 
 async def parse_vless_header(first_chunk: bytes):
@@ -1040,12 +1017,12 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
             await writer.drain()
         t1 = asyncio.create_task(ws_to_tcp(websocket, writer, conn_id, uuid))
         t2 = asyncio.create_task(tcp_to_ws(websocket, reader, conn_id, uuid))
-        done, pending = await asyncio.wait({{t1, t2}}, return_when=asyncio.FIRST_COMPLETED)
+        done, pending = await asyncio.wait({t1, t2}, return_when=asyncio.FIRST_COMPLETED)
         for t in pending:
             t.cancel()
     except Exception as e:
         stats["total_errors"] += 1
-        error_logs.append({{"error": str(e), "time": datetime.now().isoformat()}})
+        error_logs.append({"error": str(e), "time": datetime.now().isoformat()})
     finally:
         if writer:
             try:
@@ -1060,7 +1037,7 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
                 if uid and ip and not any(c.get("uuid") == uid and c.get("ip") == ip for c in connections.values()):
                     remove_ip_from_link(uid, ip)
 
-# ===================== LOGIN + DASHBOARD (Premium) =====================
+# ===================== LOGIN + DASHBOARD =====================
 LOGIN_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl" data-theme="light"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VROOM</title>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@700;900&family=Inter:wght@800&display=swap" rel="stylesheet">
 <style>
