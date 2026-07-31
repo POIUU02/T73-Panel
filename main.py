@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-VROOM Panel v5 - COMPLETE
+VROOM Panel v5 - COMPLETE FIXED
 - /sub/{uid} → plain-text vless lines (FOR APPS)
 - /page/{uid} → beautiful bilingual panel + day/night
 - Dashboard bilingual
 - Telegram button bot
-- REAL app photos from client/icons/ (7 apps)
+- REAL app photos from client/icons/ (7 apps) - FIXED
 """
 import asyncio, json, os, hashlib, secrets, time, re, base64
 from datetime import datetime, timedelta
@@ -33,11 +33,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("VROOM")
 
 # ================================================================
-# ========== LIFESPAN (جایگزین on_event) ==========
+# ========== LIFESPAN ==========
 # ================================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     global http_client
     http_client = httpx.AsyncClient(limits=httpx.Limits(max_connections=5000, max_keepalive_connections=1000), timeout=httpx.Timeout(180.0, connect=30.0), follow_redirects=True)
     logger.info(f"🚀 VROOM v5 :{CONFIG['port']}")
@@ -46,7 +45,6 @@ async def lifespan(app: FastAPI):
         TELEGRAM["enabled"] = True
         await start_telegram_bot()
     yield
-    # Shutdown
     if http_client:
         await http_client.aclose()
     if TELEGRAM_TASK:
@@ -131,6 +129,7 @@ async def get_app_photo(app_id: str):
     if not app_data:
         return {"url": None, "fallback": "📱", "download": ""}
     
+    # بررسی وجود فایل
     filepath = STATIC_DIR / app_data["file"]
     if filepath.exists():
         return {
@@ -779,7 +778,7 @@ async def subscription_raw(uid: str, request: Request):
     return Response(content=raw, media_type="text/plain; charset=utf-8", headers=headers)
 
 # ================================================================
-# ========== PAGE HTML ==========
+# ========== PAGE HTML (با عکس‌های واقعی - FIXED) ==========
 # ================================================================
 @app.get("/page/{uid}")
 async def subscription_page(uid: str):
@@ -942,7 +941,7 @@ footer b{{background:linear-gradient(135deg,var(--g),var(--ac));-webkit-backgrou
 const SUB='{sub_url}', CFG=`{server_link}`, P={percent};
 
 // ================================================================
-// ========== فقط ۷ برنامه با عکس‌های واقعی ==========
+// ========== فقط ۴ برنامه اصلی با عکس‌های واقعی ==========
 // ================================================================
 const CATALOG = {{
     android: [
@@ -975,7 +974,7 @@ const CATALOG = {{
 }};
 
 // ================================================================
-// ========== دریافت عکس از سرور ==========
+// ========== دریافت عکس از سرور (مسیر درست) ==========
 // ================================================================
 async function getAppPhoto(appId) {{
     try {{
@@ -989,7 +988,7 @@ async function getAppPhoto(appId) {{
 }}
 
 // ================================================================
-// ========== نمایش پلتفرم ==========
+// ========== نمایش پلتفرم با عکس‌های واقعی ==========
 // ================================================================
 async function showPlat(p, btn) {{
     document.querySelectorAll('.plat-btn').forEach(b => b.classList.remove('on'));
@@ -1008,15 +1007,18 @@ async function showPlat(p, btn) {{
         </div>
     `).join('');
 
+    // لود کردن عکس‌ها برای هر برنامه
     for (const a of list) {{
         const data = await getAppPhoto(a.id);
         const photoDiv = document.querySelector(`#app-${{a.id}} .app-photo`);
-        if (data.url) {{
-            photoDiv.innerHTML = `<img src="${{data.url}}" alt="${{a.name}}" 
-                onerror="this.parentElement.innerHTML='<div style=\\'width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:700;\\'>${{a.name[0]}}</div>'" 
-                style="width:100%;height:100%;object-fit:cover;display:block;"/>`;
-        }} else {{
-            photoDiv.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:700;">${{a.name[0]}}</div>`;
+        if (photoDiv) {{
+            if (data.url) {{
+                photoDiv.innerHTML = `<img src="${{data.url}}" alt="${{a.name}}" 
+                    onerror="this.parentElement.innerHTML='<div style=\\'width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:700;\\'>${{a.name[0]}}</div>'" 
+                    style="width:100%;height:100%;object-fit:cover;display:block;border-radius:12px;"/>`;
+            }} else {{
+                photoDiv.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:700;">${{a.name[0]}}</div>`;
+            }}
         }}
     }}
 }}
@@ -1040,6 +1042,17 @@ function openApp(id, plat) {{
     }}, 1500);
 }}
 
+function shareApp() {{
+    if (navigator.share) {{
+        navigator.share({{
+            title: 'VROOM',
+            url: SUB
+        }}).catch(() => cp(SUB));
+    }} else {{
+        cp(SUB);
+    }}
+}}
+
 function cp(t) {{
     if (navigator.clipboard) {{
         navigator.clipboard.writeText(t).then(() => toast('کپی شد ✅'));
@@ -1054,17 +1067,6 @@ function cp(t) {{
     }}
 }}
 
-function shareApp() {{
-    if (navigator.share) {{
-        navigator.share({{
-            title: 'VROOM',
-            url: SUB
-        }}).catch(() => cp(SUB));
-    }} else {{
-        cp(SUB);
-    }}
-}}
-
 function toast(m) {{
     const t = document.getElementById('toast');
     t.textContent = m;
@@ -1072,6 +1074,9 @@ function toast(m) {{
     setTimeout(() => t.classList.remove('show'), 2400);
 }}
 
+// ================================================================
+// ========== اجرا ==========
+// ================================================================
 showPlat('android', document.querySelector('.plat-btn'));
 setTimeout(() => {{
     document.getElementById('rg').style.background = `conic-gradient(#4f8cff 0% ${{P}}%,rgba(30,41,59,.85) ${{P}}% 100%)`;
