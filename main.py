@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn, httpx, logging, psutil
 from pathlib import Path
 import aiofiles
+from contextlib import asynccontextmanager
 
 # ================================================================
 # ========== CONFIG ==========
@@ -30,7 +31,28 @@ except Exception:
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("VROOM")
-app = FastAPI(title="VROOM", docs_url=None, redoc_url=None)
+
+# ================================================================
+# ========== LIFESPAN (جایگزین on_event) ==========
+# ================================================================
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    global http_client
+    http_client = httpx.AsyncClient(limits=httpx.Limits(max_connections=5000, max_keepalive_connections=1000), timeout=httpx.Timeout(180.0, connect=30.0), follow_redirects=True)
+    logger.info(f"🚀 VROOM v5 :{CONFIG['port']}")
+    asyncio.create_task(keep_alive())
+    if TELEGRAM.get("token") and TELEGRAM.get("admin_ids"):
+        TELEGRAM["enabled"] = True
+        await start_telegram_bot()
+    yield
+    # Shutdown
+    if http_client:
+        await http_client.aclose()
+    if TELEGRAM_TASK:
+        TELEGRAM_TASK.cancel()
+
+app = FastAPI(title="VROOM", docs_url=None, redoc_url=None, lifespan=lifespan)
 CONFIG = {"port": int(os.environ.get("PORT", 8080)), "secret": SECRET_KEY}
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -896,7 +918,7 @@ footer b{{background:linear-gradient(135deg,var(--g),var(--ac));-webkit-backgrou
 <div class="cfg" onclick="cp(CFG)">{server_link}</div>
 <div style="text-align:center">
 <div class="qr" onclick="document.getElementById('qrm').style.display='flex'"><img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={qr_data}" alt="QR"/></div>
-<div class="btns"><button class="b1" onclick="cp(SUB)">＋ Add Sub</button><button class="b2" onclick="navigator.share?.({title:'VROOM',url:SUB})||cp(SUB)">Share</button></div>
+<div class="btns"><button class="b1" onclick="cp(SUB)">＋ Add Sub</button><button class="b2" onclick="navigator.share?.({title:'VROOM', url:SUB})||cp(SUB)">Share</button></div>
 </div>
 </div>
 <div class="card">
@@ -1378,23 +1400,6 @@ async def keep_alive():
                     await c.get(f"https://{d}/health")
         except Exception:
             pass
-
-@app.on_event("startup")
-async def startup():
-    global http_client
-    http_client = httpx.AsyncClient(limits=httpx.Limits(max_connections=5000, max_keepalive_connections=1000), timeout=httpx.Timeout(180.0, connect=30.0), follow_redirects=True)
-    logger.info(f"🚀 VROOM v5 :{CONFIG['port']}")
-    asyncio.create_task(keep_alive())
-    if TELEGRAM.get("token") and TELEGRAM.get("admin_ids"):
-        TELEGRAM["enabled"] = True
-        await start_telegram_bot()
-
-@app.on_event("shutdown")
-async def shutdown():
-    if http_client:
-        await http_client.aclose()
-    if TELEGRAM_TASK:
-        TELEGRAM_TASK.cancel()
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=CONFIG["port"])
