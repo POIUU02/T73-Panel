@@ -6,6 +6,7 @@ VROOM Panel v5 - COMPLETE FIXED
 - Dashboard bilingual
 - Telegram button bot
 - REAL app photos from client/icons/ (7 apps) - FIXED
++ Crystal / Aurora Glass UI (Premium Glassmorphism + Neon Blue/Magenta)
 """
 import asyncio, json, os, hashlib, secrets, time, re, base64
 from datetime import datetime, timedelta
@@ -771,7 +772,7 @@ async def subscription_raw(uid: str, request: Request):
     return Response(content=raw, media_type="text/plain; charset=utf-8", headers=headers)
 
 # ================================================================
-# ========== PAGE HTML ==========
+# ========== PAGE HTML  (Crystal / Aurora Glass) ==========
 # ================================================================
 @app.get("/page/{uid}")
 async def subscription_page(uid: str):
@@ -789,11 +790,11 @@ async def subscription_page(uid: str):
     remaining = round(max(0, limit_gb - used_gb), 2) if limit_gb else "∞"
     
     if is_expired(link):
-        status_fa, status_en, sc = "منقضی", "Expired", "#f87171"
+        status_fa, status_en, sc = "منقضی", "Expired", "#ff6b9d"
     elif link["limit_bytes"] and link["used_bytes"] >= link["limit_bytes"]:
         status_fa, status_en, sc = "محدود", "Limited", "#fbbf24"
     else:
-        status_fa, status_en, sc = "فعال", "Active", "#34d399"
+        status_fa, status_en, sc = "فعال", "Active", "#4ade80"
     
     exp = link.get("expiry")
     if exp:
@@ -815,127 +816,252 @@ async def subscription_page(uid: str):
 <html lang="fa" dir="rtl" data-theme="dark">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <title>VROOM — {link['label']}</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@800;900&family=Vazirmatn:wght@400;700;800;900&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;700;800;900&family=Vazirmatn:wght@400;600;700;800;900&display=swap" rel="stylesheet"/>
 <style>
-:root{{--bg:#0b0b14;--card:rgba(20,20,38,.96);--g:#e8c547;--g2:#e09a2a;--t:#e6e8f0;--m:rgba(230,232,240,.55);--b:rgba(232,197,71,.16);--ac:#9b8afb;--bl:#4f8cff;--gn:#3ecf8e}}
-html[data-theme=light]{{--bg:#e8ebf2;--card:#f3f5fa;--t:#1e2433;--m:rgba(30,36,51,.55);--b:rgba(100,90,200,.16);--g:#b8941a;--g2:#c47a18;--ac:#6b5ce0}}
+:root {{
+  --bg: #07071a;
+  --glass: rgba(255,255,255,0.06);
+  --glass-border: rgba(255,255,255,0.12);
+  --text: #f0f2ff;
+  --muted: rgba(240,242,255,0.55);
+  --blue: #4f8cff;
+  --magenta: #ff4d9e;
+  --cyan: #22d3ee;
+  --green: #4ade80;
+  --radius: 22px;
+  --shadow: 0 20px 50px -12px rgba(0,0,0,0.55);
+  --glow-blue: 0 0 40px rgba(79,140,255,0.35);
+  --glow-mag: 0 0 40px rgba(255,77,158,0.3);
+}}
+html[data-theme=light] {{
+  --bg: #eef1f8;
+  --glass: rgba(255,255,255,0.72);
+  --glass-border: rgba(0,0,0,0.06);
+  --text: #0f1220;
+  --muted: rgba(15,18,32,0.55);
+  --shadow: 0 20px 50px -12px rgba(0,0,0,0.12);
+}}
 *{{margin:0;padding:0;box-sizing:border-box}}
-body{{font-family:Vazirmatn,Inter,sans-serif;background:var(--bg);color:var(--t);min-height:100vh;display:flex;justify-content:center;padding:16px 12px;transition:.4s}}
-.w{{max-width:460px;width:100%}}
-.top{{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}}
-.logo{{display:flex;align-items:center;gap:8px}}
-.logo b{{font-family:Inter;font-size:20px;font-weight:900;background:linear-gradient(135deg,var(--g),var(--ac));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
-.card{{background:var(--card);border:1px solid var(--b);border-radius:18px;padding:15px;margin-bottom:11px;box-shadow:0 8px 28px rgba(0,0,0,.12)}}
-.title{{font-size:20px;font-weight:900;font-family:Inter}}
-.sub{{font-size:12px;color:var(--g);margin:3px 0 10px}}
-.live{{display:flex;justify-content:space-between;padding:9px 12px;border-radius:12px;margin-bottom:11px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.25);font-size:12px;font-weight:700;color:var(--gn);flex-wrap:wrap;gap:6px}}
-.dot{{width:8px;height:8px;border-radius:50%;background:var(--gn);display:inline-block;margin-left:6px;animation:p 1.6s infinite}}
-@keyframes p{{0%{{box-shadow:0 0 0 0 rgba(52,211,153,.5)}}70%{{box-shadow:0 0 0 8px transparent}}}}
-.ug{{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:center}}
+body{{
+  font-family:Vazirmatn,Inter,system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  padding:20px 14px 40px;
+  transition:background .4s,color .4s;
+  overflow-x:hidden;
+}}
+/* ambient aurora */
+body::before{{
+  content:'';
+  position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(79,140,255,.28), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 90% 10%, rgba(255,77,158,.22), transparent 50%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(34,211,238,.12), transparent 50%);
+}}
+.w{{max-width:440px;width:100%;position:relative;z-index:1}}
+.top{{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}}
+.logo{{font-family:Inter;font-size:22px;font-weight:900;
+  background:linear-gradient(135deg,var(--blue),var(--magenta));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent}}
+.theme-btn{{
+  width:42px;height:42px;border-radius:14px;
+  background:var(--glass);border:1px solid var(--glass-border);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  color:var(--text);font-size:18px;cursor:pointer;
+  box-shadow:var(--shadow);transition:.25s;
+}}
+.theme-btn:active{{transform:scale(.94)}}
+.card{{
+  background:var(--glass);
+  border:1px solid var(--glass-border);
+  border-radius:var(--radius);
+  padding:18px;
+  margin-bottom:14px;
+  backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);
+  box-shadow:var(--shadow);
+  position:relative;
+  overflow:hidden;
+}}
+.card::after{{
+  content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(135deg,rgba(255,255,255,.08),transparent 40%,transparent 60%,rgba(255,255,255,.04));
+}}
+.title{{font-size:20px;font-weight:900;font-family:Inter;letter-spacing:-.3px}}
+.sub{{font-size:13px;color:var(--blue);margin:4px 0 14px;font-weight:600}}
+.live{{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:10px 14px;border-radius:14px;margin-bottom:14px;
+  background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.22);
+  font-size:12px;font-weight:700;color:var(--green);flex-wrap:wrap;gap:6px;
+}}
+.dot{{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;margin-left:6px;
+  box-shadow:0 0 0 0 rgba(74,222,128,.5);animation:pulse 1.8s infinite}}
+@keyframes pulse{{0%{{box-shadow:0 0 0 0 rgba(74,222,128,.5)}}70%{{box-shadow:0 0 0 10px transparent}}100%{{box-shadow:0 0 0 0 transparent}}}}
+.ug{{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:center}}
 @media(max-width:400px){{.ug{{grid-template-columns:1fr 1fr}}.rw{{grid-column:1/-1;justify-self:center}}}}
 .st{{text-align:center}}
-.st .l{{font-size:10px;color:var(--m)}}
-.st .v{{font-size:14px;font-weight:800}}
-.rw{{width:70px;height:70px;position:relative;display:flex;align-items:center;justify-content:center}}
-.ro{{position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(59,130,246,.3)}}
-.rg{{width:60px;height:60px;border-radius:50%;background:conic-gradient(#3b82f6 0% 0%,rgba(30,41,59,.85) 0% 100%);display:flex;align-items:center;justify-content:center;position:relative;transition:background 1s}}
-.rg::before{{content:'';position:absolute;inset:6px;border-radius:50%;background:var(--bg)}}
-.rt{{position:relative;z-index:1;font-size:12px;font-weight:800}}
-.bar{{margin-top:11px;height:5px;background:rgba(30,41,59,.4);border-radius:8px;overflow:hidden}}
-.bf{{height:100%;width:0;background:linear-gradient(90deg,#3b82f6,#a78bfa,#f472b6);border-radius:8px;transition:width 1s}}
-.h3{{font-size:11px;font-weight:700;color:var(--g);opacity:.9;margin-bottom:9px;display:flex;align-items:center;gap:6px;letter-spacing:.5px}}
-.row{{background:rgba(0,0,0,.18);padding:9px 11px;border-radius:11px;display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:9px;font-size:10px;font-family:monospace;color:var(--m);border:1px solid var(--b);cursor:pointer}}
-.row button{{background:linear-gradient(135deg,var(--g),var(--g2));border:none;color:#0a0a10;padding:5px 11px;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit}}
+.st .l{{font-size:11px;color:var(--muted);font-weight:600}}
+.st .v{{font-size:15px;font-weight:800;margin-top:2px}}
+.rw{{width:74px;height:74px;position:relative;display:flex;align-items:center;justify-content:center}}
+.ro{{position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(79,140,255,.25)}}
+.rg{{width:62px;height:62px;border-radius:50%;
+  background:conic-gradient(var(--blue) 0% 0%,rgba(30,41,59,.7) 0% 100%);
+  display:flex;align-items:center;justify-content:center;position:relative;transition:background 1s;
+  box-shadow:0 0 24px rgba(79,140,255,.35)}}
+.rg::before{{content:'';position:absolute;inset:7px;border-radius:50%;background:var(--bg)}}
+.rt{{position:relative;z-index:1;font-size:13px;font-weight:800}}
+.bar{{margin-top:14px;height:6px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden}}
+.bf{{height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--magenta));border-radius:99px;transition:width 1s;
+  box-shadow:0 0 12px rgba(79,140,255,.5)}}
+.h3{{font-size:12px;font-weight:700;color:var(--blue);opacity:.95;margin-bottom:12px;display:flex;align-items:center;gap:7px;letter-spacing:.4px}}
+.row{{
+  background:rgba(0,0,0,.18);padding:11px 13px;border-radius:14px;
+  display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;
+  font-size:11px;font-family:monospace;color:var(--muted);border:1px solid var(--glass-border);cursor:pointer;
+  transition:.2s;
+}}
+.row:active{{transform:scale(.985)}}
+.row button{{
+  background:linear-gradient(135deg,var(--blue),#7c5cff);
+  border:none;color:#fff;padding:7px 14px;border-radius:10px;font-size:12px;font-weight:800;cursor:pointer;
+  font-family:inherit;box-shadow:0 4px 16px rgba(79,140,255,.4);transition:.2s;
+}}
+.row button:active{{transform:scale(.95)}}
 .row .lt{{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
-.g3{{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:9px;padding-top:9px;border-top:1px solid var(--b)}}
-.ii{{background:rgba(0,0,0,.12);padding:8px 5px;border-radius:11px;text-align:center;border:1px solid var(--b)}}
-.ii .l{{font-size:9px;opacity:.45;display:block}}
-.ii .v{{font-size:12px;font-weight:800}}
-.cfg{{background:rgba(0,0,0,.2);padding:9px;border-radius:11px;font-size:10px;font-family:monospace;word-break:break-all;margin-bottom:9px;max-height:52px;overflow-y:auto;border:1px solid var(--b);direction:ltr;text-align:left;color:var(--m);cursor:pointer}}
-.qr{{width:112px;height:112px;background:#fff;border-radius:13px;margin:0 auto 9px;overflow:hidden;border:2px solid rgba(255,215,0,.3);cursor:pointer}}
+.g3{{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;padding-top:12px;border-top:1px solid var(--glass-border)}}
+.ii{{background:rgba(0,0,0,.12);padding:10px 6px;border-radius:14px;text-align:center;border:1px solid var(--glass-border)}}
+.ii .l{{font-size:10px;opacity:.5;display:block;font-weight:600}}
+.ii .v{{font-size:13px;font-weight:800;margin-top:3px}}
+.cfg{{
+  background:rgba(0,0,0,.22);padding:12px;border-radius:14px;font-size:11px;font-family:monospace;
+  word-break:break-all;margin-bottom:12px;max-height:56px;overflow-y:auto;border:1px solid var(--glass-border);
+  direction:ltr;text-align:left;color:var(--muted);cursor:pointer;
+}}
+.qr{{
+  width:120px;height:120px;background:#fff;border-radius:18px;margin:0 auto 12px;overflow:hidden;
+  border:2px solid rgba(79,140,255,.35);cursor:pointer;
+  box-shadow:0 0 30px rgba(79,140,255,.25),0 12px 30px rgba(0,0,0,.3);
+}}
 .qr img{{width:100%;height:100%}}
-.btns{{display:flex;gap:7px}}
-.btns button{{flex:1;padding:11px;border:none;border-radius:11px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit}}
-.b1{{background:linear-gradient(135deg,var(--g),var(--g2));color:#0a0a10}}
-.b2{{background:rgba(255,215,0,.08);color:var(--g);border:1px solid var(--b)}}
-.apps{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}}
+.btns{{display:flex;gap:10px}}
+.btns button{{
+  flex:1;padding:13px;border:none;border-radius:14px;font-weight:800;font-size:13px;cursor:pointer;
+  font-family:inherit;transition:.2s;
+}}
+.b1{{
+  background:linear-gradient(135deg,var(--blue),#7c5cff);color:#fff;
+  box-shadow:0 8px 24px rgba(79,140,255,.45);
+}}
+.b2{{
+  background:rgba(255,77,158,.12);color:var(--magenta);
+  border:1px solid rgba(255,77,158,.3);
+}}
+.b1:active,.b2:active{{transform:scale(.97)}}
+.apps{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}}
 @media(max-width:400px){{.apps{{grid-template-columns:repeat(3,1fr)}}}}
-.app{{background:rgba(255,255,255,.04);border:1px solid var(--b);border-radius:16px;padding:12px 6px 10px;text-align:center;cursor:pointer;position:relative;transition:.2s}}
+.app{{
+  background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:18px;
+  padding:14px 6px 12px;text-align:center;cursor:pointer;position:relative;transition:.25s;
+}}
 .app:active{{transform:scale(.96)}}
-.app-photo{{width:54px;height:54px;margin:0 auto 7px;border-radius:14px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;background:#1a1a2e;transition:transform .2s ease}}
-.app:hover .app-photo{{transform:scale(1.05)}}
+.app-photo{{
+  width:56px;height:56px;margin:0 auto 8px;border-radius:16px;overflow:hidden;
+  box-shadow:0 8px 24px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(145deg,#1a1a2e,#2a2a4a);transition:transform .25s;
+}}
+.app:hover .app-photo{{transform:scale(1.06)}}
 .app-photo img{{width:100%;height:100%;object-fit:cover;display:block}}
-.app-name{{font-size:10px;font-weight:700;color:var(--t)}}
-.badge{{position:absolute;top:6px;right:6px;font-size:9px;background:rgba(232,197,71,.22);color:var(--g);padding:2px 5px;border-radius:6px;font-weight:800}}
-.download-badge{{position:absolute;bottom:4px;right:50%;transform:translateX(50%);font-size:8px;background:rgba(52,211,153,.15);color:var(--gn);padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap}}
-.plat{{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:8px;margin-bottom:10px;scrollbar-width:none}}
+.app-name{{font-size:11px;font-weight:700;color:var(--text)}}
+.badge{{position:absolute;top:8px;right:8px;font-size:10px;background:rgba(79,140,255,.25);color:var(--blue);padding:2px 6px;border-radius:8px;font-weight:800}}
+.download-badge{{position:absolute;bottom:6px;right:50%;transform:translateX(50%);font-size:9px;background:rgba(74,222,128,.15);color:var(--green);padding:2px 7px;border-radius:6px;font-weight:700;white-space:nowrap}}
+.plat{{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:10px;margin-bottom:12px;scrollbar-width:none}}
 .plat::-webkit-scrollbar{{display:none}}
-.plat-btn{{flex-shrink:0;padding:7px 14px;border-radius:20px;border:1px solid var(--b);background:rgba(255,255,255,.03);color:var(--m);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:.2s}}
-.plat-btn.on{{background:linear-gradient(135deg,var(--g),var(--g2));color:#0a0a10;border-color:transparent}}
-footer{{text-align:center;font-size:11px;color:var(--m);margin-top:6px;padding-top:9px;border-top:1px solid var(--b)}}
-footer b{{background:linear-gradient(135deg,var(--g),var(--ac));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
-.toast{{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(70px);background:var(--card);padding:11px 20px;border-radius:11px;font-size:12px;color:var(--g);opacity:0;transition:.3s;border:1px solid var(--b);z-index:9999;font-weight:700}}
+.plat-btn{{
+  flex-shrink:0;padding:8px 16px;border-radius:99px;border:1px solid var(--glass-border);
+  background:rgba(255,255,255,.04);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;
+  font-family:inherit;transition:.25s;
+}}
+.plat-btn.on{{
+  background:linear-gradient(135deg,var(--blue),#7c5cff);color:#fff;border-color:transparent;
+  box-shadow:0 6px 20px rgba(79,140,255,.4);
+}}
+footer{{text-align:center;font-size:12px;color:var(--muted);margin-top:10px;padding-top:14px;border-top:1px solid var(--glass-border)}}
+footer b{{background:linear-gradient(135deg,var(--blue),var(--magenta));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
+.toast{{
+  position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px);
+  background:var(--glass);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  padding:12px 22px;border-radius:14px;font-size:13px;color:var(--blue);opacity:0;transition:.35s;
+  border:1px solid var(--glass-border);z-index:9999;font-weight:700;box-shadow:var(--shadow);
+}}
 .toast.show{{opacity:1;transform:translateX(-50%) translateY(0)}}
 </style></head><body>
 <div class="w">
-<div class="top"><div class="logo"><b>🚀 VROOM</b></div>
-<div style="display:flex;gap:6px">
-<button class="plat-btn on" onclick="document.documentElement.setAttribute('data-theme',document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark')">🌓</button>
-</div></div>
+<div class="top">
+  <div class="logo">🚀 VROOM</div>
+  <button class="theme-btn" onclick="document.documentElement.setAttribute('data-theme',document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark')">🌓</button>
+</div>
+
 <div class="card">
-<div class="title">Subscription</div>
-<div class="sub">✦ {link['label']} ✦</div>
-<div class="live"><span><span class="dot"></span>Server Online</span><span style="color:var(--m)">Connections: <b style="color:var(--t)">{live_conns}</b></span></div>
-<div class="ug">
-<div class="st"><div class="l">Used</div><div class="v">{used_gb} GB</div></div>
-<div class="st"><div class="l">Status</div><div class="v" style="color:{sc};font-size:12px">{status_fa}</div></div>
-<div class="st"><div class="l">Left</div><div class="v">{remaining}{' GB' if remaining!='∞' else ''}</div></div>
-<div class="rw"><div class="ro"></div><div class="rg" id="rg"><div class="rt" id="pct">0%</div></div></div>
+  <div class="title">Subscription</div>
+  <div class="sub">✦ {link['label']} ✦</div>
+  <div class="live"><span><span class="dot"></span>Server Online</span><span style="color:var(--muted)">Connections: <b style="color:var(--text)">{live_conns}</b></span></div>
+  <div class="ug">
+    <div class="st"><div class="l">Used</div><div class="v">{used_gb} GB</div></div>
+    <div class="st"><div class="l">Status</div><div class="v" style="color:{sc};font-size:13px">{status_fa}</div></div>
+    <div class="st"><div class="l">Left</div><div class="v">{remaining}{' GB' if remaining!='∞' else ''}</div></div>
+    <div class="rw"><div class="ro"></div><div class="rg" id="rg"><div class="rt" id="pct">0%</div></div></div>
+  </div>
+  <div class="bar"><div class="bf" id="bf"></div></div>
 </div>
-<div class="bar"><div class="bf" id="bf"></div></div>
-</div>
+
 <div class="card">
-<div class="h3">📋 Sub Link (for apps)</div>
-<div class="row" onclick="cp(SUB)"><span class="lt">{sub_url}</span><button onclick="event.stopPropagation();cp(SUB)">Copy</button></div>
-<div class="g3">
-<div class="ii"><span class="l">Status</span><span class="v" style="color:{sc}">{status_fa}</span></div>
-<div class="ii"><span class="l">Expiry</span><span class="v" style="color:#fbbf24">{exp_disp}</span></div>
-<div class="ii"><span class="l">Days Left</span><span class="v" style="color:#6bcbff">{days_fa}</span></div>
+  <div class="h3">📋 Sub Link (for apps)</div>
+  <div class="row" onclick="cp(SUB)"><span class="lt">{sub_url}</span><button onclick="event.stopPropagation();cp(SUB)">Copy</button></div>
+  <div class="g3">
+    <div class="ii"><span class="l">Status</span><span class="v" style="color:{sc}">{status_fa}</span></div>
+    <div class="ii"><span class="l">Expiry</span><span class="v" style="color:#fbbf24">{exp_disp}</span></div>
+    <div class="ii"><span class="l">Days Left</span><span class="v" style="color:#67e8f9">{days_fa}</span></div>
+  </div>
 </div>
-</div>
+
 <div class="card">
-<div class="h3">📦 Config & QR</div>
-<div class="cfg" onclick="cp(CFG)">{server_link}</div>
-<div style="text-align:center">
-<div class="qr" onclick="document.getElementById('qrm').style.display='flex'"><img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={qr_data}" alt="QR"/></div>
-<div class="btns"><button class="b1" onclick="cp(SUB)">＋ Add Sub</button><button class="b2" onclick="shareApp()">Share</button></div>
+  <div class="h3">📦 Config & QR</div>
+  <div class="cfg" onclick="cp(CFG)">{server_link}</div>
+  <div style="text-align:center">
+    <div class="qr" onclick="document.getElementById('qrm').style.display='flex'"><img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={qr_data}" alt="QR"/></div>
+    <div class="btns"><button class="b1" onclick="cp(SUB)">＋ Add Sub</button><button class="b2" onclick="shareApp()">Share</button></div>
+  </div>
 </div>
-</div>
+
 <div class="card">
-<div class="h3">📱 Easy Import</div>
-<div class="plat" id="platBar">
-<button class="plat-btn on" data-p="android" onclick="showPlat('android',this)">Android</button>
-<button class="plat-btn" data-p="ios" onclick="showPlat('ios',this)">iOS</button>
-<button class="plat-btn" data-p="windows" onclick="showPlat('windows',this)">Windows</button>
-<button class="plat-btn" data-p="macos" onclick="showPlat('macos',this)">macOS</button>
-<button class="plat-btn" data-p="linux" onclick="showPlat('linux',this)">Linux</button>
+  <div class="h3">📱 Easy Import</div>
+  <div class="plat" id="platBar">
+    <button class="plat-btn on" data-p="android" onclick="showPlat('android',this)">Android</button>
+    <button class="plat-btn" data-p="ios" onclick="showPlat('ios',this)">iOS</button>
+    <button class="plat-btn" data-p="windows" onclick="showPlat('windows',this)">Windows</button>
+    <button class="plat-btn" data-p="macos" onclick="showPlat('macos',this)">macOS</button>
+    <button class="plat-btn" data-p="linux" onclick="showPlat('linux',this)">Linux</button>
+  </div>
+  <div class="apps" id="appsGrid"></div>
 </div>
-<div class="apps" id="appsGrid"></div>
-</div>
+
 <footer>Powered by <b>VROOM 🚀</b></footer>
 </div>
-<div id="qrm" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);align-items:center;justify-content:center;z-index:10000" onclick="this.style.display='none'">
-<img style="width:min(80vw,300px);border-radius:16px;border:2px solid rgba(255,215,0,.4)" src="https://api.qrserver.com/v1/create-qr-code/?size=360x360&data={qr_data}" alt="QR"/>
+
+<div id="qrm" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);align-items:center;justify-content:center;z-index:10000;backdrop-filter:blur(8px)" onclick="this.style.display='none'">
+  <img style="width:min(80vw,300px);border-radius:20px;border:2px solid rgba(79,140,255,.5);box-shadow:0 0 60px rgba(79,140,255,.4)" src="https://api.qrserver.com/v1/create-qr-code/?size=360x360&data={qr_data}" alt="QR"/>
 </div>
 <div class="toast" id="toast"></div>
+
 <script>
 const SUB='{sub_url}', CFG=`{server_link}`, P={percent};
 
-// ================================================================
-// ========== برنامه‌ها برای هر پلتفرم ==========
-// ================================================================
 const CATALOG = {{
     android: [
         {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
@@ -964,9 +1090,6 @@ const CATALOG = {{
     ]
 }};
 
-// ================================================================
-// ========== دریافت عکس از سرور ==========
-// ================================================================
 async function getAppPhoto(appId) {{
     try {{
         const r = await fetch(`/api/app-photo/${{appId}}`);
@@ -974,104 +1097,71 @@ async function getAppPhoto(appId) {{
             const d = await r.json();
             return {{url: d.url, download: d.download, name: d.name}};
         }}
-    }} catch(e) {{
-        console.log('Error loading photo for:', appId, e);
-    }}
+    }} catch(e) {{}}
     return {{url: null, download: null, name: appId}};
 }}
 
-// ================================================================
-// ========== نمایش پلتفرم ==========
-// ================================================================
 async function showPlat(p, btn) {{
     document.querySelectorAll('.plat-btn').forEach(b => b.classList.remove('on'));
     if (btn) btn.classList.add('on');
-
     const list = CATALOG[p] || [];
     const grid = document.getElementById('appsGrid');
     grid.innerHTML = list.map(a => `
         <div class="app" onclick="openApp('${{a.id}}','${{p}}')" id="app-${{a.id}}">
             <span class="badge">＋</span>
-            <div class="app-photo" style="background:#2a2a4a">
-                <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:700;">⬇️</div>
+            <div class="app-photo">
+                <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:700;">⬇️</div>
             </div>
             <div class="app-name">${{a.name}}</div>
             <span class="download-badge">📥 دانلود</span>
         </div>
     `).join('');
-
     for (const a of list) {{
         const data = await getAppPhoto(a.id);
         const photoDiv = document.querySelector(`#app-${{a.id}} .app-photo`);
         if (photoDiv) {{
             if (data.url) {{
                 photoDiv.innerHTML = `<img src="${{data.url}}" alt="${{a.name}}" 
-                    onerror="this.parentElement.innerHTML='<div style=\\'width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:700;\\'>${{a.name[0]}}</div>'" 
-                    style="width:100%;height:100%;object-fit:cover;display:block;border-radius:12px;"/>`;
+                    onerror="this.parentElement.innerHTML='<div style=\\'width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:16px;font-weight:700;\\'>${{a.name[0]}}</div>'" 
+                    style="width:100%;height:100%;object-fit:cover;display:block;border-radius:14px;"/>`;
             }} else {{
-                photoDiv.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:700;">${{a.name[0]}}</div>`;
+                photoDiv.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:16px;font-weight:700;">${{a.name[0]}}</div>`;
             }}
         }}
     }}
 }}
 
-// ================================================================
-// ========== باز کردن برنامه ==========
-// ================================================================
 function openApp(id, plat) {{
     const a = (CATALOG[plat] || []).find(x => x.id === id);
     if (!a) return;
-
-    if (a.scheme) {{
-        try {{
-            location.href = a.scheme;
-        }} catch(e) {{}}
-    }}
-
-    setTimeout(() => {{
-        cp(SUB);
-        toast('لینک ساب کپی شد');
-    }}, 1500);
+    if (a.scheme) {{ try {{ location.href = a.scheme; }} catch(e) {{}} }}
+    setTimeout(() => {{ cp(SUB); toast('لینک ساب کپی شد'); }}, 1500);
 }}
 
 function shareApp() {{
     if (navigator.share) {{
-        navigator.share({{
-            title: 'VROOM',
-            url: SUB
-        }}).catch(() => cp(SUB));
-    }} else {{
-        cp(SUB);
-    }}
+        navigator.share({{ title: 'VROOM', url: SUB }}).catch(() => cp(SUB));
+    }} else {{ cp(SUB); }}
 }}
 
 function cp(t) {{
     if (navigator.clipboard) {{
         navigator.clipboard.writeText(t).then(() => toast('کپی شد ✅'));
     }} else {{
-        const i = document.createElement('input');
-        i.value = t;
-        document.body.appendChild(i);
-        i.select();
-        document.execCommand('copy');
-        document.body.removeChild(i);
-        toast('کپی شد ✅');
+        const i = document.createElement('input'); i.value = t; document.body.appendChild(i); i.select();
+        document.execCommand('copy'); document.body.removeChild(i); toast('کپی شد ✅');
     }}
 }}
 
 function toast(m) {{
     const t = document.getElementById('toast');
-    t.textContent = m;
-    t.classList.add('show');
+    t.textContent = m; t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 2400);
 }}
 
-// ================================================================
-// ========== اجرا ==========
-// ================================================================
 showPlat('android', document.querySelector('.plat-btn'));
 setTimeout(() => {{
-    document.getElementById('rg').style.background = `conic-gradient(#4f8cff 0% ${{P}}%,rgba(30,41,59,.85) ${{P}}% 100%)`;
+    document.getElementById('rg').style.background = `conic-gradient(#4f8cff 0% ${{P}}%,rgba(30,41,59,.7) ${{P}}% 100%)`;
     document.getElementById('bf').style.width = P + '%';
     document.getElementById('pct').textContent = P + '%';
 }}, 250);
@@ -1216,16 +1306,27 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
                     remove_ip_from_link(uid, ip)
 
 # ================================================================
-# ========== LOGIN & DASHBOARD ==========
+# ========== LOGIN & DASHBOARD  (same Crystal style) ==========
 # ================================================================
 LOGIN_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VROOM</title>
-<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@700;900&display=swap" rel="stylesheet">
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Vazirmatn,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#07071a;color:#f0f2f8;direction:rtl;background-image:radial-gradient(ellipse at 20% 20%,rgba(124,92,252,.15),transparent 50%)}
-.card{background:rgba(18,18,36,.95);border:1px solid rgba(255,215,0,.14);border-radius:24px;padding:40px 32px;width:100%;max-width:380px}
-h1{font-size:28px;font-weight:900;text-align:center;background:linear-gradient(135deg,#ffd700,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:20px}
-input{width:100%;padding:12px;background:rgba(0,0,0,.35);border:1px solid rgba(255,215,0,.14);border-radius:12px;color:#fff;font-size:14px;font-family:inherit;outline:none;margin-bottom:12px}
-.btn{width:100%;padding:13px;background:linear-gradient(135deg,#ffd700,#f7971e);border:none;border-radius:12px;color:#0a0a10;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit}
-.err{color:#f87171;font-size:13px;text-align:center;display:none;margin-bottom:10px}.err.show{display:block}</style></head><body>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@700;900&family=Inter:wght@800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#07071a;--glass:rgba(255,255,255,.07);--border:rgba(255,255,255,.12);--text:#f0f2ff;--blue:#4f8cff;--mag:#ff4d9e}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Vazirmatn,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);direction:rtl;
+background-image:radial-gradient(ellipse 80% 50% at 15% 0%,rgba(79,140,255,.28),transparent 55%),radial-gradient(ellipse 70% 45% at 90% 20%,rgba(255,77,158,.2),transparent 50%)}
+.card{background:var(--glass);border:1px solid var(--border);border-radius:28px;padding:42px 34px;width:100%;max-width:380px;
+backdrop-filter:blur(32px);-webkit-backdrop-filter:blur(32px);box-shadow:0 25px 60px -15px rgba(0,0,0,.6);position:relative;overflow:hidden}
+.card::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(135deg,rgba(255,255,255,.1),transparent 45%)}
+h1{font-size:30px;font-weight:900;text-align:center;font-family:Inter;
+background:linear-gradient(135deg,var(--blue),var(--mag));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:28px}
+input{width:100%;padding:14px 16px;background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:14px;color:#fff;font-size:15px;font-family:inherit;outline:none;margin-bottom:14px;transition:.2s}
+input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(79,140,255,.2)}
+.btn{width:100%;padding:15px;background:linear-gradient(135deg,var(--blue),#7c5cff);border:none;border-radius:14px;color:#fff;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;
+box-shadow:0 10px 30px rgba(79,140,255,.45);transition:.2s}
+.btn:active{transform:scale(.98)}
+.err{color:#ff6b9d;font-size:13px;text-align:center;display:none;margin-bottom:12px}.err.show{display:block}
+</style></head><body>
 <div class="card"><h1>VROOM</h1><div class="err" id="err"></div>
 <form id="f"><input type="password" id="pw" placeholder="رمز عبور / Password" autofocus><button class="btn" type="submit">ورود / Login</button></form></div>
 <script>document.getElementById('f').onsubmit=async e=>{e.preventDefault();const err=document.getElementById('err');err.classList.remove('show');
@@ -1234,35 +1335,55 @@ if(!r.ok)throw new Error('رمز اشتباه است');location.href='/dashboard
 
 DASHBOARD_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>VROOM Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;800;900&family=Inter:wght@800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700;800;900&family=Inter:wght@800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#07071a;--s:#121224;--g:#ffd700;--g2:#f7971e;--t:#f0f2f8;--t2:rgba(255,255,255,.5);--b:rgba(255,215,0,.12);--gn:#34d399;--rd:#f87171;--ac:#a78bfa}
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:Vazirmatn,sans-serif;background:var(--bg);color:var(--t);min-height:100vh;direction:rtl;background-image:radial-gradient(ellipse at 15% 0%,rgba(124,92,252,.1),transparent 50%)}
-.side{width:190px;background:#0a0a14;border-left:1px solid var(--b);position:fixed;right:0;top:0;bottom:0;padding:12px 8px;display:flex;flex-direction:column;z-index:40}
-.brand{font-size:17px;font-weight:900;background:linear-gradient(135deg,var(--g),var(--ac));-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter;padding:6px;margin-bottom:10px}
-.ni{padding:8px 10px;border-radius:9px;font-size:11px;font-weight:600;color:var(--t2);cursor:pointer;margin-bottom:2px;border:none;background:none;width:100%;text-align:right;font-family:inherit}
-.ni:hover,.ni.on{background:rgba(255,215,0,.08);color:var(--g)}.main{margin-right:190px;padding:16px 12px}
-.page{display:none}.page.on{display:block}.pt{font-size:17px;font-weight:900;margin-bottom:12px;background:linear-gradient(135deg,var(--g),var(--ac));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:10px}
-.st{background:var(--s);border:1px solid var(--b);border-radius:12px;padding:11px}.st .l{font-size:9px;color:var(--t2)}.st .v{font-size:16px;font-weight:800}
-.card{background:var(--s);border:1px solid var(--b);border-radius:12px;padding:12px;margin-bottom:9px}.card h3{font-size:11px;color:var(--g);margin-bottom:8px}
-.btn{padding:6px 11px;border-radius:8px;border:none;font-weight:700;font-size:11px;cursor:pointer;font-family:inherit}
-.bg{background:linear-gradient(135deg,var(--g),var(--g2));color:#0a0a10}.bo{background:rgba(255,215,0,.08);color:var(--g);border:1px solid var(--b)}.bd{background:rgba(248,113,113,.12);color:var(--rd)}
-input,select{width:100%;padding:8px 10px;background:rgba(0,0,0,.25);border:1px solid var(--b);border-radius:8px;color:var(--t);font-family:inherit;font-size:12px;outline:none;margin-bottom:6px}
-table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;padding:6px;color:var(--t2);border-bottom:1px solid var(--b);font-size:9px}td{padding:6px;border-bottom:1px solid rgba(255,255,255,.04)}
-.tag{display:inline-block;padding:2px 6px;border-radius:6px;font-size:9px;font-weight:700}.ton{background:rgba(52,211,153,.15);color:var(--gn)}.toff{background:rgba(248,113,113,.12);color:var(--rd)}
-.toast{position:fixed;bottom:14px;left:50%;transform:translateX(-50%) translateY(40px);background:var(--s);border:1px solid var(--b);padding:8px 16px;border-radius:10px;font-size:12px;color:var(--g);opacity:0;transition:.3s;z-index:999}
+:root{
+  --bg:#07071a;--glass:rgba(255,255,255,.06);--border:rgba(255,255,255,.1);
+  --text:#f0f2ff;--muted:rgba(240,242,255,.5);--blue:#4f8cff;--mag:#ff4d9e;--green:#4ade80;--red:#ff6b9d;
+  --radius:18px;--shadow:0 16px 40px -10px rgba(0,0,0,.5);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Vazirmatn,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;direction:rtl;
+background-image:radial-gradient(ellipse 70% 40% at 10% 0%,rgba(79,140,255,.18),transparent 50%),radial-gradient(ellipse 50% 30% at 90% 5%,rgba(255,77,158,.12),transparent 45%)}
+.side{width:200px;background:rgba(10,10,20,.85);border-left:1px solid var(--border);position:fixed;right:0;top:0;bottom:0;padding:16px 10px;display:flex;flex-direction:column;z-index:40;
+backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px)}
+.brand{font-size:18px;font-weight:900;background:linear-gradient(135deg,var(--blue),var(--mag));-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter;padding:8px;margin-bottom:14px}
+.ni{padding:10px 12px;border-radius:12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;margin-bottom:3px;border:none;background:none;width:100%;text-align:right;font-family:inherit;transition:.2s}
+.ni:hover,.ni.on{background:rgba(79,140,255,.12);color:var(--blue)}
+.main{margin-right:200px;padding:20px 16px}
+.page{display:none}.page.on{display:block}
+.pt{font-size:18px;font-weight:900;margin-bottom:16px;background:linear-gradient(135deg,var(--blue),var(--mag));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.st{background:var(--glass);border:1px solid var(--border);border-radius:var(--radius);padding:14px;backdrop-filter:blur(20px);box-shadow:var(--shadow)}
+.st .l{font-size:10px;color:var(--muted);font-weight:600}.st .v{font-size:17px;font-weight:800;margin-top:4px}
+.card{background:var(--glass);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;backdrop-filter:blur(20px);box-shadow:var(--shadow)}
+.card h3{font-size:12px;color:var(--blue);margin-bottom:10px;font-weight:700}
+.btn{padding:8px 14px;border-radius:11px;border:none;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;transition:.2s}
+.bg{background:linear-gradient(135deg,var(--blue),#7c5cff);color:#fff;box-shadow:0 6px 18px rgba(79,140,255,.4)}
+.bo{background:rgba(79,140,255,.1);color:var(--blue);border:1px solid rgba(79,140,255,.25)}
+.bd{background:rgba(255,107,157,.12);color:var(--red)}
+.btn:active{transform:scale(.96)}
+input,select{width:100%;padding:10px 12px;background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:11px;color:var(--text);font-family:inherit;font-size:13px;outline:none;margin-bottom:8px}
+input:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(79,140,255,.15)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:right;padding:8px;color:var(--muted);border-bottom:1px solid var(--border);font-size:10px}
+td{padding:8px;border-bottom:1px solid rgba(255,255,255,.04)}
+.tag{display:inline-block;padding:3px 8px;border-radius:8px;font-size:10px;font-weight:700}
+.ton{background:rgba(74,222,128,.15);color:var(--green)}.toff{background:rgba(255,107,157,.12);color:var(--red)}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(50px);background:var(--glass);border:1px solid var(--border);padding:10px 18px;border-radius:12px;font-size:13px;color:var(--blue);opacity:0;transition:.3s;z-index:999;backdrop-filter:blur(16px);font-weight:700}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-.mob{display:none;position:fixed;top:0;left:0;right:0;height:44px;background:#0a0a14;border-bottom:1px solid var(--b);z-index:50;align-items:center;justify-content:space-between;padding:0 12px}
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:80;display:none;align-items:center;justify-content:center}.modal-bg.show{display:flex}
-.modal{background:var(--s);border:1px solid var(--b);border-radius:14px;padding:16px;width:92%;max-width:380px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px}.pulse{display:inline-block;width:7px;height:7px;background:var(--gn);border-radius:50%;animation:p 1.5s infinite;margin:0 3px}
-@keyframes p{0%{box-shadow:0 0 0 0 rgba(52,211,153,.5)}70%{box-shadow:0 0 0 7px transparent}}
-.lang{display:inline-flex;border:1px solid var(--b);border-radius:14px;overflow:hidden;font-size:10px;font-weight:700;margin-bottom:8px}
-.lang button{border:none;padding:4px 9px;background:transparent;color:var(--t2);cursor:pointer;font-family:inherit;font-weight:700}.lang button.on{background:linear-gradient(135deg,var(--g),var(--g2));color:#0a0a10}
-@media(max-width:768px){.side{transform:translateX(100%)}.side.open{transform:translateX(0)}.main{margin-right:0;padding-top:52px}.stats{grid-template-columns:1fr 1fr}.mob{display:flex}}
+.mob{display:none;position:fixed;top:0;left:0;right:0;height:48px;background:rgba(10,10,20,.9);border-bottom:1px solid var(--border);z-index:50;align-items:center;justify-content:space-between;padding:0 14px;backdrop-filter:blur(20px)}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:80;display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px)}.modal-bg.show{display:flex}
+.modal{background:rgba(18,18,36,.95);border:1px solid var(--border);border-radius:20px;padding:20px;width:92%;max-width:380px;backdrop-filter:blur(24px)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pulse{display:inline-block;width:8px;height:8px;background:var(--green);border-radius:50%;animation:p 1.6s infinite;margin:0 4px}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(74,222,128,.5)}70%{box-shadow:0 0 0 8px transparent}}
+.lang{display:inline-flex;border:1px solid var(--border);border-radius:14px;overflow:hidden;font-size:11px;font-weight:700;margin-bottom:10px}
+.lang button{border:none;padding:5px 11px;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;font-weight:700}
+.lang button.on{background:linear-gradient(135deg,var(--blue),#7c5cff);color:#fff}
+@media(max-width:768px){.side{transform:translateX(100%)}.side.open{transform:translateX(0)}.main{margin-right:0;padding-top:60px}.stats{grid-template-columns:1fr 1fr}.mob{display:flex}}
 </style></head><body>
-<div class="mob"><span style="font-weight:900;background:linear-gradient(135deg,#ffd700,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">VROOM</span>
+<div class="mob"><span style="font-weight:900;background:linear-gradient(135deg,#4f8cff,#ff4d9e);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter">VROOM</span>
 <button class="btn bo" onclick="document.querySelector('.side').classList.toggle('open')">☰</button></div>
 <aside class="side">
 <div class="brand">VROOM</div>
@@ -1275,25 +1396,25 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 <button class="ni" data-p="domain" data-fa="🌍 دامنه" data-en="🌍 Domain">🌍 دامنه</button>
 <button class="ni" data-p="sec" data-fa="🔒 امنیت" data-en="🔒 Security">🔒 امنیت</button>
 <div style="flex:1"></div>
-<button class="ni" style="color:var(--rd)" data-fa="خروج" data-en="Logout" onclick="fetch('/api/logout',{method:'POST'}).then(()=>location='/login')">خروج</button>
+<button class="ni" style="color:var(--red)" data-fa="خروج" data-en="Logout" onclick="fetch('/api/logout',{method:'POST'}).then(()=>location='/login')">خروج</button>
 </aside>
 <main class="main">
 <section class="page on" id="p-dash">
 <div class="pt">داشبورد <span class="pulse"></span></div>
 <div class="stats">
 <div class="st"><div class="l">👥 اتصال</div><div class="v" id="s-cn">0</div></div>
-<div class="st"><div class="l">📥 دانلود</div><div class="v" id="s-dl" style="font-size:13px">0</div></div>
-<div class="st"><div class="l">📤 آپلود</div><div class="v" id="s-ul" style="font-size:13px">0</div></div>
-<div class="st"><div class="l">📦 کل</div><div class="v" id="s-tr" style="font-size:13px">0</div></div>
+<div class="st"><div class="l">📥 دانلود</div><div class="v" id="s-dl" style="font-size:14px">0</div></div>
+<div class="st"><div class="l">📤 آپلود</div><div class="v" id="s-ul" style="font-size:14px">0</div></div>
+<div class="st"><div class="l">📦 کل</div><div class="v" id="s-tr" style="font-size:14px">0</div></div>
 </div>
 <div class="stats">
 <div class="st"><div class="l">📡 لینک‌ها</div><div class="v" id="s-lk">0</div></div>
-<div class="st"><div class="l">⏱️ آپتایم</div><div class="v" id="s-up" style="font-size:12px">--</div></div>
+<div class="st"><div class="l">⏱️ آپتایم</div><div class="v" id="s-up" style="font-size:13px">--</div></div>
 <div class="st"><div class="l">💻 CPU</div><div class="v" id="s-cpu">--</div></div>
 <div class="st"><div class="l">🧠 RAM</div><div class="v" id="s-ram">--</div></div>
 </div>
 <div class="card"><h3>⚡ سریع</h3>
-<div style="display:flex;gap:6px;flex-wrap:wrap">
+<div style="display:flex;gap:8px;flex-wrap:wrap">
 <button class="btn bg" onclick="qc(1)">+1GB</button>
 <button class="btn bg" onclick="qc(5)">+5GB</button>
 <button class="btn bg" onclick="qc(10)">+10GB</button>
@@ -1303,7 +1424,7 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 <section class="page" id="p-links">
 <div class="pt">اینباندها <button class="btn bg" style="float:left" onclick="$('#addM').classList.add('show')">+ افزودن</button></div>
 <div class="card" style="overflow-x:auto"><table><thead><tr><th>نام</th><th>مصرف</th><th>IP</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody id="lb"></tbody></table></div>
-<p style="font-size:10px;color:var(--t2);margin-top:6px">📌 <b>ساب</b> = برای برنامه‌ها · <b>صفحه</b> = پنل کاربری</p>
+<p style="font-size:11px;color:var(--muted);margin-top:8px">📌 <b>ساب</b> = برای برنامه‌ها · <b>صفحه</b> = پنل کاربری</p>
 </section>
 <section class="page" id="p-conn">
 <div class="pt">اتصالات <span class="pulse"></span></div>
@@ -1311,20 +1432,20 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 </section>
 <section class="page" id="p-addr">
 <div class="pt">آی‌پی تمیز</div>
-<div class="card"><div class="grid2"><input id="new-addr" placeholder="IP/دامنه"><button class="btn bg" onclick="addAddr()">افزودن</button></div><div id="alist" style="margin-top:8px"></div></div>
+<div class="card"><div class="grid2"><input id="new-addr" placeholder="IP/دامنه"><button class="btn bg" onclick="addAddr()">افزودن</button></div><div id="alist" style="margin-top:10px"></div></div>
 </section>
 <section class="page" id="p-tg">
 <div class="pt">تلگرام</div>
 <div class="card">
-<p style="font-size:11px;color:var(--t2);margin-bottom:8px">توکن از @BotFather · آی‌دی از @userinfobot · ربات دکمه‌ای</p>
+<p style="font-size:12px;color:var(--muted);margin-bottom:10px">توکن از @BotFather · آی‌دی از @userinfobot · ربات دکمه‌ای</p>
 <input id="tg-tok" placeholder="توکن بات"><input id="tg-adm" placeholder="آی‌دی ادمین(ها)">
-<div style="display:flex;gap:6px"><button class="btn bg" onclick="saveTg()">فعال‌سازی</button><button class="btn bd" onclick="stopTg()">توقف</button></div>
-<div id="tg-st" style="margin-top:8px;font-size:12px;color:var(--t2)"></div>
+<div style="display:flex;gap:8px"><button class="btn bg" onclick="saveTg()">فعال‌سازی</button><button class="btn bd" onclick="stopTg()">توقف</button></div>
+<div id="tg-st" style="margin-top:10px;font-size:13px;color:var(--muted)"></div>
 </div>
 </section>
 <section class="page" id="p-domain">
 <div class="pt">دامنه</div>
-<div class="card"><input id="dom-in" placeholder="example.com"><button class="btn bg" onclick="saveDom()">ذخیره</button><div id="dom-cur" style="margin-top:6px;font-size:12px;color:var(--t2)"></div></div>
+<div class="card"><input id="dom-in" placeholder="example.com"><button class="btn bg" onclick="saveDom()">ذخیره</button><div id="dom-cur" style="margin-top:8px;font-size:13px;color:var(--muted)"></div></div>
 </section>
 <section class="page" id="p-sec">
 <div class="pt">امنیت</div>
@@ -1332,7 +1453,7 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 </section>
 </main>
 <div class="modal-bg" id="addM" onclick="if(event.target===this)this.classList.remove('show')">
-<div class="modal"><h3 style="color:var(--g);margin-bottom:8px">افزودن اینباند</h3>
+<div class="modal"><h3 style="color:var(--blue);margin-bottom:12px">افزودن اینباند</h3>
 <input id="nl" placeholder="نام انگلیسی">
 <div class="grid2"><input id="nlim" type="number" placeholder="حجم"><select id="nun"><option>GB</option><option>MB</option></select></div>
 <input id="nexp" type="number" placeholder="روز"><input id="nmax" type="number" placeholder="حداکثر IP">
@@ -1351,19 +1472,19 @@ $('#s-cn').textContent=d.active_connections;$('#s-dl').textContent=d.download_fm
 $('#s-tr').textContent=d.total_fmt||(d.total_traffic_mb+' MB');$('#s-lk').textContent=d.links_count;$('#s-up').textContent=d.uptime;
 $('#s-cpu').textContent=(d.cpu_percent||0).toFixed(0)+'%';$('#s-ram').textContent=(d.memory_percent||0).toFixed(0)+'%';window._conns=d.connections_detail||[]}catch(e){}}
 async function loadL(){const r=await fetch('/api/links');const d=await r.json();const b=$('#lb');
-if(!d.links?.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--t2)">خالی</td></tr>';return}
+if(!d.links?.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--muted)">خالی</td></tr>';return}
 b.innerHTML=d.links.map(l=>{const u=(l.used_bytes/1e9).toFixed(2),lim=l.limit_bytes?(l.limit_bytes/1e9).toFixed(1)+'G':'∞';
 const sub=l.sub_url||(location.origin+'/sub/'+l.uuid),page=l.page_url||(location.origin+'/page/'+l.uuid);
 return `<tr><td><b>${l.label}</b></td><td>${u}/${lim}</td><td>${l.current_connections}/${l.max_connections||'∞'}</td>
 <td><span class="tag ${l.active&&!l.expired?'ton':'toff'}">${l.active&&!l.expired?'روشن':'خاموش'}</span></td>
-<td style="display:flex;gap:3px;flex-wrap:wrap">
-<button class="btn bo" style="padding:2px 6px;font-size:9px" onclick="navigator.clipboard.writeText('${sub}').then(()=>toast('ساب'))">ساب</button>
-<button class="btn bo" style="padding:2px 6px;font-size:9px" onclick="navigator.clipboard.writeText('${page}').then(()=>toast('صفحه'))">صفحه</button>
-<button class="btn bo" style="padding:2px 6px;font-size:9px" onclick="navigator.clipboard.writeText('${l.vless_link.replace(/'/g,"\\\\'")}').then(()=>toast('کانفیگ'))">کپی</button>
-<button class="btn bd" style="padding:2px 6px;font-size:9px" onclick="delL('${l.uuid}')">حذف</button></td></tr>`}).join('')}
+<td style="display:flex;gap:4px;flex-wrap:wrap">
+<button class="btn bo" style="padding:3px 8px;font-size:10px" onclick="navigator.clipboard.writeText('${sub}').then(()=>toast('ساب'))">ساب</button>
+<button class="btn bo" style="padding:3px 8px;font-size:10px" onclick="navigator.clipboard.writeText('${page}').then(()=>toast('صفحه'))">صفحه</button>
+<button class="btn bo" style="padding:3px 8px;font-size:10px" onclick="navigator.clipboard.writeText('${l.vless_link.replace(/'/g,"\\\\'")}').then(()=>toast('کانفیگ'))">کپی</button>
+<button class="btn bd" style="padding:3px 8px;font-size:10px" onclick="delL('${l.uuid}')">حذف</button></td></tr>`}).join('')}
 function loadC(){const list=window._conns||[];const b=$('#cb');
-if(!list.length){b.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--t2)">هیچ</td></tr>';return}
-b.innerHTML=list.map(c=>`<tr><td>${c.uuid}</td><td>${c.ip}</td><td>${(c.bytes/1e6).toFixed(2)} MB</td><td style="font-size:10px">${(c.since||'').slice(11,19)}</td></tr>`).join('')}
+if(!list.length){b.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--muted)">هیچ</td></tr>';return}
+b.innerHTML=list.map(c=>`<tr><td>${c.uuid}</td><td>${c.ip}</td><td>${(c.bytes/1e6).toFixed(2)} MB</td><td style="font-size:11px">${(c.since||'').slice(11,19)}</td></tr>`).join('')}
 async function delL(u){if(!confirm('حذف؟'))return;await fetch('/api/links/'+u,{method:'DELETE'});toast('OK');loadL();loadS()}
 async function createL(){const label=$('#nl').value.trim(),limit=parseFloat($('#nlim').value)||0,unit=$('#nun').value,expiry=parseFloat($('#nexp').value)||0,max=parseInt($('#nmax').value)||0;
 if(!label){toast('نام');return}
@@ -1371,10 +1492,10 @@ const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'applica
 if(!r.ok){toast((await r.json().catch(()=>({}))).detail||'خطا');return}toast('ساخته شد');$('#addM').classList.remove('show');loadL();loadS()}
 async function qc(gb){const n='u'+Math.floor(Math.random()*900+100);await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:n,limit_value:gb,limit_unit:'GB',expiry_days:30})});toast(n);loadS()}
 async function resetAll(){if(!confirm('ریست همه؟'))return;await fetch('/api/reset-all-usage',{method:'POST'});toast('ریست');loadL()}
-async function loadA(){const r=await fetch('/api/addresses');const d=await r.json();$('#alist').innerHTML=(d.addresses||[]).map((a,i)=>`<div style="display:flex;justify-content:space-between;padding:7px;background:rgba(0,0,0,.2);border-radius:7px;margin-bottom:4px;font-size:12px"><span>${a}</span><button class="btn bd" style="padding:2px 7px;font-size:10px" onclick="delA(${i})">حذف</button></div>`).join('')||'<div style="color:var(--t2);font-size:12px">خالی</div>'}
+async function loadA(){const r=await fetch('/api/addresses');const d=await r.json();$('#alist').innerHTML=(d.addresses||[]).map((a,i)=>`<div style="display:flex;justify-content:space-between;padding:9px;background:rgba(0,0,0,.2);border-radius:10px;margin-bottom:5px;font-size:13px"><span>${a}</span><button class="btn bd" style="padding:3px 9px;font-size:11px" onclick="delA(${i})">حذف</button></div>`).join('')||'<div style="color:var(--muted);font-size:13px">خالی</div>'}
 async function addAddr(){const a=$('#new-addr').value.trim();if(!a)return;await fetch('/api/addresses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:a})});$('#new-addr').value='';loadA();toast('افزوده شد')}
 async function delA(i){await fetch('/api/addresses/'+i,{method:'DELETE'});loadA()}
-async function loadTg(){const r=await fetch('/api/telegram');const d=await r.json();$('#tg-st').innerHTML=d.enabled?'<span style="color:var(--gn)">● روشن</span> — '+(d.admin_ids||[]).join(', '):'<span style="color:var(--rd)">● خاموش</span>';if(d.admin_ids?.length)$('#tg-adm').value=d.admin_ids.join(' ')}
+async function loadTg(){const r=await fetch('/api/telegram');const d=await r.json();$('#tg-st').innerHTML=d.enabled?'<span style="color:var(--green)">● روشن</span> — '+(d.admin_ids||[]).join(', '):'<span style="color:var(--red)">● خاموش</span>';if(d.admin_ids?.length)$('#tg-adm').value=d.admin_ids.join(' ')}
 async function saveTg(){const r=await fetch('/api/telegram',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('#tg-tok').value.trim(),admin_ids:$('#tg-adm').value.trim()})});const d=await r.json().catch(()=>({}));if(!r.ok){toast(d.detail||'خطا');return}toast(d.enabled?'روشن @'+(d.bot_username||''):'ذخیره');loadTg()}
 async function stopTg(){await fetch('/api/telegram/stop',{method:'POST'});toast('متوقف');loadTg()}
 async function loadDom(){const r=await fetch('/api/domain');const d=await r.json();$('#dom-cur').textContent='فعلی: '+(d.domain||'پیش‌فرض')}
