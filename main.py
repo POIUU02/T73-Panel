@@ -918,7 +918,7 @@ footer b{{background:linear-gradient(135deg,var(--g),var(--ac));-webkit-backgrou
 <div class="cfg" onclick="cp(CFG)">{server_link}</div>
 <div style="text-align:center">
 <div class="qr" onclick="document.getElementById('qrm').style.display='flex'"><img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={qr_data}" alt="QR"/></div>
-<div class="btns"><button class="b1" onclick="cp(SUB)">＋ Add Sub</button><button class="b2" onclick="navigator.share?.({title:'VROOM', url:SUB})||cp(SUB)">Share</button></div>
+<div class="btns"><button class="b1" onclick="cp(SUB)">＋ Add Sub</button><button class="b2" onclick="shareApp()">Share</button></div>
 </div>
 </div>
 <div class="card">
@@ -1051,6 +1051,17 @@ function cp(t) {{
         document.execCommand('copy');
         document.body.removeChild(i);
         toast('کپی شد ✅');
+    }}
+}}
+
+function shareApp() {{
+    if (navigator.share) {{
+        navigator.share({{
+            title: 'VROOM',
+            url: SUB
+        }}).catch(() => cp(SUB));
+    }} else {{
+        cp(SUB);
     }}
 }}
 
