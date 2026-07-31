@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-VROOM Panel v5 - COMPLETE FIXED
-- /sub/{uid} → plain-text vless lines (FOR APPS)
-- /page/{uid} → beautiful bilingual panel + day/night (Crystal Soft Glass UI - exact match to design)
-- Dashboard bilingual
-- Telegram button bot
-- REAL app photos from client/icons/
+VROOM Panel v5.1 - Premium Crystal Glass
+- /sub/{uid} → plain-text vless
+- /page/{uid} → Ultra smooth bilingual + day/night
+- Dashboard → Full bilingual + day/night + premium glass
+- Telegram bot
 """
 import asyncio, json, os, hashlib, secrets, time, re, base64
 from datetime import datetime, timedelta
@@ -19,9 +18,6 @@ import uvicorn, httpx, logging, psutil
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-# ================================================================
-# ========== CONFIG ==========
-# ================================================================
 try:
     SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_urlsafe(32)
     os.environ.setdefault("SECRET_KEY", SECRET_KEY)
@@ -31,14 +27,11 @@ except Exception:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("VROOM")
 
-# ================================================================
-# ========== LIFESPAN ==========
-# ================================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global http_client
     http_client = httpx.AsyncClient(limits=httpx.Limits(max_connections=5000, max_keepalive_connections=1000), timeout=httpx.Timeout(180.0, connect=30.0), follow_redirects=True)
-    logger.info(f"🚀 VROOM v5 :{CONFIG['port']}")
+    logger.info(f"🚀 VROOM v5.1 :{CONFIG['port']}")
     asyncio.create_task(keep_alive())
     if TELEGRAM.get("token") and TELEGRAM.get("admin_ids"):
         TELEGRAM["enabled"] = True
@@ -53,9 +46,6 @@ app = FastAPI(title="VROOM", docs_url=None, redoc_url=None, lifespan=lifespan)
 CONFIG = {"port": int(os.environ.get("PORT", 8080)), "secret": SECRET_KEY}
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-# ================================================================
-# ========== STATIC FILES ==========
-# ================================================================
 STATIC_DIR = Path("client/icons")
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/client", StaticFiles(directory="client"), name="client")
@@ -73,9 +63,6 @@ TELEGRAM = {"token": os.environ.get("TELEGRAM_BOT_TOKEN", ""), "admin_ids": [], 
 TELEGRAM_LOCK, TELEGRAM_TASK, TG_STATE = asyncio.Lock(), None, {}
 SESSION_COOKIE, SESSION_TTL = "vroom_session", 60 * 60 * 24 * 7
 
-# ================================================================
-# ========== APP PHOTOS ==========
-# ================================================================
 APP_PHOTOS = {
     "Hiddify": {"file": "Hiddify.pnq", "name": "Hiddify", "fallback": "🛡️", "download": "https://github.com/hiddify/hiddify-app/releases/latest"},
     "v2rayng": {"file": "v2rayng.png", "name": "v2rayNG", "fallback": "📱", "download": "https://github.com/2dust/v2rayNG/releases/latest"},
@@ -95,9 +82,6 @@ async def get_app_photo(app_id: str):
         return {"url": f"/client/icons/{app_data['file']}", "fallback": app_data["fallback"], "download": app_data["download"], "name": app_data["name"]}
     return {"url": None, "fallback": app_data["fallback"], "download": app_data["download"], "name": app_data["name"]}
 
-# ================================================================
-# ========== AUTH ==========
-# ================================================================
 def hash_password(pw):
     return hashlib.sha256(f"{pw}{CONFIG['secret']}".encode()).hexdigest()
 
@@ -130,9 +114,6 @@ async def require_auth(request: Request):
         raise HTTPException(401, "unauthorized")
     return True
 
-# ================================================================
-# ========== HELPERS ==========
-# ================================================================
 def get_domain():
     return (os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("RAILWAY_PUBLIC_DOMAIN") or "localhost").replace("https://", "").replace("http://", "").rstrip("/")
 
@@ -214,9 +195,7 @@ async def build_sub_content(uid, link):
         lines.append(generate_vless_link(uid, remark=f"VROOM-{link['label']}-{i+1}", address=addr))
     return "\n".join(lines)
 
-# ================================================================
-# ========== TELEGRAM ==========
-# ================================================================
+# ===================== TELEGRAM =====================
 def ikb(rows):
     return {"inline_keyboard": [[{"text": t, "callback_data": c} for t, c in row] for row in rows]}
 
@@ -481,12 +460,10 @@ async def start_telegram_bot():
             pass
     TELEGRAM_TASK = asyncio.create_task(telegram_poll_loop())
 
-# ================================================================
-# ========== API ENDPOINTS ==========
-# ================================================================
+# ===================== API =====================
 @app.get("/")
 async def root():
-    return {"service": "VROOM", "version": "5.0", "domain": get_domain()}
+    return {"service": "VROOM", "version": "5.1", "domain": get_domain()}
 
 @app.get("/health")
 async def health():
@@ -691,9 +668,6 @@ async def stop_tg(_=Depends(require_auth)):
         TELEGRAM_TASK.cancel()
     return {"ok": True}
 
-# ================================================================
-# ========== SUBSCRIPTION RAW ==========
-# ================================================================
 @app.get("/sub/{uid}")
 async def subscription_raw(uid: str, request: Request):
     async with LINKS_LOCK:
@@ -726,9 +700,7 @@ async def subscription_raw(uid: str, request: Request):
         return Response(content=_b64.b64encode(raw.encode()).decode(), media_type="text/plain; charset=utf-8", headers=headers)
     return Response(content=raw, media_type="text/plain; charset=utf-8", headers=headers)
 
-# ================================================================
-# ========== PAGE HTML  (Exact match to design + Day/Night + Bilingual) ==========
-# ================================================================
+# ===================== PAGE (Ultra Smooth) =====================
 @app.get("/page/{uid}")
 async def subscription_page(uid: str):
     async with LINKS_LOCK:
@@ -745,11 +717,11 @@ async def subscription_page(uid: str):
     remaining = round(max(0, limit_gb - used_gb), 2) if limit_gb else "∞"
     
     if is_expired(link):
-        status_fa, status_en, sc = "منقضی", "Expired", "#ff6b9d"
+        status_fa, status_en, sc = "منقضی", "Expired", "#f43f5e"
     elif link["limit_bytes"] and link["used_bytes"] >= link["limit_bytes"]:
-        status_fa, status_en, sc = "محدود", "Limited", "#fbbf24"
+        status_fa, status_en, sc = "محدود", "Limited", "#f59e0b"
     else:
-        status_fa, status_en, sc = "فعال", "Active", "#22c55e"
+        status_fa, status_en, sc = "فعال", "Active", "#10b981"
     
     exp = link.get("expiry")
     if exp:
@@ -775,538 +747,185 @@ async def subscription_page(uid: str):
 <title>VROOM — {link['label']}</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&family=Vazirmatn:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
 <style>
-:root {{
-  --bg: #eef2ff;
-  --card: rgba(255,255,255,0.82);
-  --card-border: rgba(255,255,255,0.9);
-  --text: #1e293b;
-  --muted: #64748b;
-  --blue: #3b82f6;
-  --blue2: #6366f1;
-  --pink: #ec4899;
-  --green: #22c55e;
-  --radius: 24px;
-  --shadow: 0 10px 40px -8px rgba(99,102,241,0.18), 0 4px 16px -4px rgba(0,0,0,0.06);
-  --glow: 0 8px 32px rgba(59,130,246,0.35);
+:root{{
+  --bg:#f0f4ff;--card:rgba(255,255,255,.78);--border:rgba(255,255,255,.85);
+  --text:#0f172a;--muted:#64748b;--blue:#3b82f6;--indigo:#6366f1;--pink:#ec4899;
+  --green:#10b981;--radius:22px;--shadow:0 12px 40px -10px rgba(99,102,241,.18);
 }}
-html[data-theme="dark"] {{
-  --bg: #0b0f1a;
-  --card: rgba(20,25,45,0.78);
-  --card-border: rgba(255,255,255,0.08);
-  --text: #f1f5f9;
-  --muted: #94a3b8;
-  --shadow: 0 12px 40px -8px rgba(0,0,0,0.55), 0 4px 16px rgba(59,130,246,0.12);
+[data-theme=dark]{{
+  --bg:#0a0e1a;--card:rgba(15,23,42,.75);--border:rgba(255,255,255,.07);
+  --text:#f1f5f9;--muted:#94a3b8;--shadow:0 12px 40px -10px rgba(0,0,0,.5);
 }}
 *{{margin:0;padding:0;box-sizing:border-box}}
 body{{
-  font-family:Vazirmatn,Inter,system-ui,sans-serif;
-  background:var(--bg);
-  color:var(--text);
-  min-height:100vh;
-  padding:16px 14px 40px;
-  transition:background .35s,color .35s;
-  overflow-x:hidden;
+  font-family:Vazirmatn,Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);
+  min-height:100vh;padding:14px 12px 36px;transition:background .3s,color .3s;overflow-x:hidden;
 }}
-/* soft aurora background */
 body::before{{
-  content:'';
-  position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:
-    radial-gradient(ellipse 90% 60% at 10% -5%, rgba(99,102,241,.22), transparent 55%),
-    radial-gradient(ellipse 70% 50% at 95% 5%, rgba(236,72,153,.18), transparent 50%),
-    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(59,130,246,.1), transparent 50%);
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(ellipse 90% 55% at 8% -8%,rgba(99,102,241,.22),transparent 55%),
+             radial-gradient(ellipse 70% 45% at 96% 0%,rgba(236,72,153,.16),transparent 50%);
 }}
-html[data-theme="dark"] body::before{{
-  background:
-    radial-gradient(ellipse 90% 60% at 10% -5%, rgba(99,102,241,.18), transparent 55%),
-    radial-gradient(ellipse 70% 50% at 95% 5%, rgba(236,72,153,.14), transparent 50%),
-    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(59,130,246,.08), transparent 50%);
+[data-theme=dark] body::before{{
+  background:radial-gradient(ellipse 90% 55% at 8% -8%,rgba(99,102,241,.16),transparent 55%),
+             radial-gradient(ellipse 70% 45% at 96% 0%,rgba(236,72,153,.1),transparent 50%);
 }}
-.wrap{{max-width:440px;margin:0 auto;position:relative;z-index:1}}
-
-/* ===== HEADER ===== */
-.header{{
-  display:flex;align-items:center;justify-content:space-between;
-  margin-bottom:18px;padding:0 2px;
+.w{{max-width:430px;margin:0 auto;position:relative;z-index:1}}
+.hdr{{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}}
+.hdr-l{{display:flex;align-items:center;gap:8px}}
+.ib{{
+  width:38px;height:38px;border-radius:13px;background:var(--card);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;
+  box-shadow:var(--shadow);backdrop-filter:blur(14px);transition:transform .15s;color:var(--text);
 }}
-.header-left{{display:flex;align-items:center;gap:10px}}
-.icon-btn{{
-  width:40px;height:40px;border-radius:14px;
-  background:var(--card);border:1px solid var(--card-border);
-  display:flex;align-items:center;justify-content:center;
-  cursor:pointer;font-size:18px;box-shadow:var(--shadow);
-  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
-  transition:.2s;color:var(--text);
-}}
-.icon-btn:active{{transform:scale(.94)}}
-.lang-switch{{
-  display:flex;background:var(--card);border:1px solid var(--card-border);
-  border-radius:14px;overflow:hidden;box-shadow:var(--shadow);
-  backdrop-filter:blur(16px);
-}}
-.lang-switch button{{
-  border:none;padding:8px 12px;font-size:12px;font-weight:700;
-  background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;
-  transition:.2s;
-}}
-.lang-switch button.on{{
-  background:linear-gradient(135deg,var(--blue),var(--blue2));
-  color:#fff;
-}}
-.logo{{
-  display:flex;align-items:center;gap:6px;
-  font-family:Inter;font-weight:900;font-size:20px;
-  background:linear-gradient(135deg,#6366f1,#ec4899);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-}}
-.logo span{{font-size:11px;font-weight:600;opacity:.7;display:block;letter-spacing:.5px;margin-top:-2px}}
-
-/* ===== CARDS ===== */
+.ib:active{{transform:scale(.93)}}
+.ls{{display:flex;background:var(--card);border:1px solid var(--border);border-radius:13px;overflow:hidden;box-shadow:var(--shadow);backdrop-filter:blur(14px)}}
+.ls button{{border:none;padding:7px 11px;font-size:11px;font-weight:700;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;transition:.15s}}
+.ls button.on{{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff}}
+.logo{{font-family:Inter;font-weight:900;font-size:19px;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;display:flex;align-items:center;gap:5px}}
 .card{{
-  background:var(--card);
-  border:1px solid var(--card-border);
-  border-radius:var(--radius);
-  padding:18px;
-  margin-bottom:14px;
-  box-shadow:var(--shadow);
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-  position:relative;
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;
+  margin-bottom:12px;box-shadow:var(--shadow);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
 }}
-.card-title{{
-  font-size:15px;font-weight:800;margin-bottom:14px;
-  display:flex;align-items:center;justify-content:space-between;
-}}
-.card-title .badge{{
-  font-size:12px;font-weight:600;color:var(--blue);
-  background:rgba(59,130,246,.1);padding:3px 10px;border-radius:20px;
-}}
-
-/* ===== TOP STATUS CARD ===== */
-.status-row{{
-  display:flex;justify-content:space-between;align-items:center;
-  margin-bottom:16px;font-size:12px;font-weight:600;
-}}
-.status-online{{
-  display:flex;align-items:center;gap:6px;color:var(--green);
-}}
-.dot{{
-  width:8px;height:8px;border-radius:50%;background:var(--green);
-  box-shadow:0 0 0 0 rgba(34,197,94,.5);animation:pulse 1.8s infinite;
-}}
-@keyframes pulse{{
-  0%{{box-shadow:0 0 0 0 rgba(34,197,94,.5)}}
-  70%{{box-shadow:0 0 0 8px transparent}}
-  100%{{box-shadow:0 0 0 0 transparent}}
-}}
-.stats-grid{{
-  display:grid;grid-template-columns:auto 1fr 1fr 1fr;gap:10px;align-items:center;
-}}
-@media(max-width:380px){{.stats-grid{{grid-template-columns:1fr 1fr;gap:12px}}
-.ring-wrap{{grid-column:1/-1;justify-self:center;margin-bottom:4px}}}}
-.stat{{text-align:center}}
-.stat .label{{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:2px}}
-.stat .value{{font-size:15px;font-weight:800}}
-.ring-wrap{{width:72px;height:72px;position:relative}}
-.ring{{
-  width:72px;height:72px;border-radius:50%;
-  background:conic-gradient(var(--blue) 0% 0%, #e2e8f0 0% 100%);
-  display:flex;align-items:center;justify-content:center;
-  box-shadow:0 0 20px rgba(59,130,246,.25);
-  transition:background 1s;
-}}
-html[data-theme="dark"] .ring{{background:conic-gradient(var(--blue) 0% 0%, #1e293b 0% 100%)}}
-.ring-inner{{
-  width:56px;height:56px;border-radius:50%;
-  background:var(--card);display:flex;align-items:center;justify-content:center;
-  font-size:14px;font-weight:800;
-}}
-.progress-bar{{
-  margin-top:14px;height:6px;background:rgba(148,163,184,.25);
-  border-radius:99px;overflow:hidden;
-}}
-.progress-fill{{
-  height:100%;width:0;border-radius:99px;
-  background:linear-gradient(90deg,var(--blue),var(--pink));
-  transition:width 1s;box-shadow:0 0 10px rgba(59,130,246,.4);
-}}
-
-/* ===== SUB LINK ===== */
-.sub-row{{
-  display:flex;align-items:center;gap:10px;
-  background:rgba(148,163,184,.08);border-radius:16px;
-  padding:8px 10px;margin-bottom:14px;
-}}
-.sub-url{{
-  flex:1;font-size:11px;font-family:monospace;color:var(--muted);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:left;
-}}
-.copy-btn{{
-  background:linear-gradient(135deg,var(--blue),var(--blue2));
-  color:#fff;border:none;padding:9px 16px;border-radius:12px;
-  font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;
-  box-shadow:var(--glow);white-space:nowrap;transition:.2s;
-}}
-.copy-btn:active{{transform:scale(.96)}}
-.info-pills{{
-  display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;
-}}
-.pill{{
-  background:rgba(148,163,184,.08);border-radius:14px;
-  padding:10px 6px;text-align:center;
-}}
-.pill .p-label{{font-size:10px;color:var(--muted);font-weight:600;margin-bottom:3px;display:flex;align-items:center;justify-content:center;gap:3px}}
-.pill .p-value{{font-size:13px;font-weight:800}}
-
-/* ===== CONFIG + QR ===== */
-.cfg-box{{
-  background:rgba(148,163,184,.08);border-radius:14px;
-  padding:12px;font-size:10px;font-family:monospace;
-  word-break:break-all;max-height:52px;overflow-y:auto;
-  direction:ltr;text-align:left;color:var(--muted);margin-bottom:14px;
-  cursor:pointer;position:relative;
-}}
-.cfg-box .copy-icon{{
-  position:absolute;top:8px;right:8px;font-size:14px;opacity:.5;
-}}
-.qr-wrap{{
-  display:flex;justify-content:center;margin-bottom:14px;
-}}
-.qr{{
-  width:130px;height:130px;background:#fff;border-radius:18px;
-  padding:8px;box-shadow:0 8px 30px rgba(59,130,246,.2);
-  border:2px solid rgba(99,102,241,.2);cursor:pointer;
-}}
-.qr img{{width:100%;height:100%;border-radius:10px}}
-.action-btns{{display:flex;gap:10px}}
-.action-btns button{{
-  flex:1;padding:13px;border:none;border-radius:14px;
-  font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;transition:.2s;
-}}
-.btn-share{{
-  background:rgba(148,163,184,.12);color:var(--text);
-  border:1px solid rgba(148,163,184,.2);
-}}
-.btn-add{{
-  background:linear-gradient(135deg,var(--blue),var(--pink));
-  color:#fff;box-shadow:0 8px 24px rgba(236,72,153,.35);
-}}
-.action-btns button:active{{transform:scale(.97)}}
-
-/* ===== QUICK TOOLS ===== */
-.plat-row{{
-  display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;
-}}
-.plat-btn{{
-  padding:8px 14px;border-radius:20px;border:1px solid rgba(148,163,184,.2);
-  background:rgba(148,163,184,.08);color:var(--muted);
-  font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:.2s;
-}}
-.plat-btn.on{{
-  background:linear-gradient(135deg,var(--blue),var(--blue2));
-  color:#fff;border-color:transparent;box-shadow:0 4px 16px rgba(59,130,246,.35);
-}}
-.apps-grid{{
-  display:grid;grid-template-columns:repeat(4,1fr);gap:10px;
-}}
-@media(max-width:380px){{.apps-grid{{grid-template-columns:repeat(3,1fr)}}}}
-.app-card{{
-  background:rgba(148,163,184,.06);border:1px solid rgba(148,163,184,.12);
-  border-radius:18px;padding:14px 6px 10px;text-align:center;
-  cursor:pointer;transition:.2s;position:relative;
-}}
-.app-card:active{{transform:scale(.96)}}
-.app-icon{{
-  width:48px;height:48px;margin:0 auto 8px;border-radius:14px;
-  background:linear-gradient(145deg,#e0e7ff,#fce7f3);
-  display:flex;align-items:center;justify-content:center;
-  font-size:22px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.08);
-}}
-html[data-theme="dark"] .app-icon{{background:linear-gradient(145deg,#1e293b,#312e81)}}
-.app-icon img{{width:100%;height:100%;object-fit:cover}}
-.app-name{{font-size:11px;font-weight:700}}
-.app-hint{{font-size:9px;color:var(--muted);margin-top:2px}}
-
-/* ===== FOOTER ===== */
-.footer{{
-  text-align:center;font-size:11px;color:var(--muted);
-  margin-top:8px;padding-top:12px;
-}}
-.footer b{{
-  background:linear-gradient(135deg,var(--blue),var(--pink));
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-}}
-
-/* ===== TOAST ===== */
-.toast{{
-  position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px);
-  background:var(--card);backdrop-filter:blur(20px);
-  padding:12px 22px;border-radius:14px;font-size:13px;font-weight:700;
-  color:var(--blue);opacity:0;transition:.35s;border:1px solid var(--card-border);
-  z-index:9999;box-shadow:var(--shadow);
-}}
+.ct{{font-size:14px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}}
+.badge{{font-size:11px;font-weight:600;color:var(--blue);background:rgba(59,130,246,.1);padding:3px 9px;border-radius:20px}}
+.sr{{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;font-size:12px;font-weight:600}}
+.so{{display:flex;align-items:center;gap:5px;color:var(--green)}}
+.dot{{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(16,185,129,.45);animation:p 1.8s infinite}}
+@keyframes p{{0%{{box-shadow:0 0 0 0 rgba(16,185,129,.45)}}70%{{box-shadow:0 0 0 8px transparent}}}}
+.sg{{display:grid;grid-template-columns:auto 1fr 1fr 1fr;gap:8px;align-items:center}}
+@media(max-width:370px){{.sg{{grid-template-columns:1fr 1fr}}.rw{{grid-column:1/-1;justify-self:center;margin-bottom:6px}}}}
+.st{{text-align:center}}.st .l{{font-size:10px;color:var(--muted);font-weight:600}}.st .v{{font-size:14px;font-weight:800;margin-top:1px}}
+.rw{{width:68px;height:68px;position:relative}}
+.rg{{width:68px;height:68px;border-radius:50%;background:conic-gradient(var(--blue) 0% 0%,#e2e8f0 0% 100%);display:flex;align-items:center;justify-content:center;box-shadow:0 0 18px rgba(59,130,246,.22);transition:background .8s}}
+[data-theme=dark] .rg{{background:conic-gradient(var(--blue) 0% 0%,#1e293b 0% 100%)}}
+.ri{{width:52px;height:52px;border-radius:50%;background:var(--card);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800}}
+.pb{{margin-top:12px;height:5px;background:rgba(148,163,184,.22);border-radius:99px;overflow:hidden}}
+.pf{{height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--blue),var(--pink));transition:width .8s}}
+.srow{{display:flex;align-items:center;gap:8px;background:rgba(148,163,184,.07);border-radius:14px;padding:7px 9px;margin-bottom:12px}}
+.surl{{flex:1;font-size:10px;font-family:monospace;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:left}}
+.cb{{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff;border:none;padding:8px 14px;border-radius:11px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(59,130,246,.3);white-space:nowrap;transition:transform .15s}}
+.cb:active{{transform:scale(.95)}}
+.ip{{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}}
+.pi{{background:rgba(148,163,184,.07);border-radius:13px;padding:9px 5px;text-align:center}}
+.pi .pl{{font-size:9px;color:var(--muted);font-weight:600;margin-bottom:2px}}
+.pi .pv{{font-size:12px;font-weight:800}}
+.cfg{{background:rgba(148,163,184,.07);border-radius:13px;padding:10px;font-size:9.5px;font-family:monospace;word-break:break-all;max-height:48px;overflow-y:auto;direction:ltr;text-align:left;color:var(--muted);margin-bottom:12px;cursor:pointer;position:relative}}
+.qr-w{{display:flex;justify-content:center;margin-bottom:12px}}
+.qr{{width:120px;height:120px;background:#fff;border-radius:16px;padding:7px;box-shadow:0 8px 28px rgba(59,130,246,.18);border:2px solid rgba(99,102,241,.15);cursor:pointer}}
+.qr img{{width:100%;height:100%;border-radius:9px}}
+.ab{{display:flex;gap:8px}}
+.ab button{{flex:1;padding:12px;border:none;border-radius:13px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;transition:transform .15s}}
+.bs{{background:rgba(148,163,184,.1);color:var(--text);border:1px solid rgba(148,163,184,.18)}}
+.ba{{background:linear-gradient(135deg,var(--blue),var(--pink));color:#fff;box-shadow:0 7px 22px rgba(236,72,153,.3)}}
+.ab button:active{{transform:scale(.97)}}
+.pr{{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}}
+.pb2{{padding:7px 13px;border-radius:18px;border:1px solid rgba(148,163,184,.18);background:rgba(148,163,184,.07);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:.15s}}
+.pb2.on{{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff;border-color:transparent;box-shadow:0 4px 14px rgba(59,130,246,.3)}}
+.ag{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}}
+@media(max-width:370px){{.ag{{grid-template-columns:repeat(3,1fr)}}}}
+.ac{{background:rgba(148,163,184,.05);border:1px solid rgba(148,163,184,.1);border-radius:16px;padding:12px 5px 9px;text-align:center;cursor:pointer;transition:transform .15s}}
+.ac:active{{transform:scale(.95)}}
+.ai{{width:44px;height:44px;margin:0 auto 6px;border-radius:12px;background:linear-gradient(145deg,#e0e7ff,#fce7f3);display:flex;align-items:center;justify-content:center;font-size:18px;overflow:hidden;box-shadow:0 3px 10px rgba(0,0,0,.06)}}
+[data-theme=dark] .ai{{background:linear-gradient(145deg,#1e293b,#312e81)}}
+.ai img{{width:100%;height:100%;object-fit:cover}}
+.an{{font-size:10px;font-weight:700}}.ah{{font-size:8px;color:var(--muted);margin-top:1px}}
+.ft{{text-align:center;font-size:10px;color:var(--muted);margin-top:6px;padding-top:10px}}
+.ft b{{background:linear-gradient(135deg,var(--blue),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
+.toast{{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(70px);background:var(--card);backdrop-filter:blur(16px);padding:10px 18px;border-radius:12px;font-size:12px;font-weight:700;color:var(--blue);opacity:0;transition:.3s;border:1px solid var(--border);z-index:9999;box-shadow:var(--shadow)}}
 .toast.show{{opacity:1;transform:translateX(-50%) translateY(0)}}
-
-/* QR Modal */
-#qrm{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);align-items:center;justify-content:center;z-index:10000;backdrop-filter:blur(8px)}}
-#qrm img{{width:min(80vw,300px);border-radius:20px;box-shadow:0 0 60px rgba(59,130,246,.4)}}
+#qrm{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);align-items:center;justify-content:center;z-index:10000;backdrop-filter:blur(6px)}}
+#qrm img{{width:min(78vw,290px);border-radius:18px;box-shadow:0 0 50px rgba(59,130,246,.35)}}
 </style>
 </head>
 <body>
-<div class="wrap">
-
-  <!-- HEADER -->
-  <div class="header">
-    <div class="header-left">
-      <button class="icon-btn" id="themeBtn" onclick="toggleTheme()">☀️</button>
-      <div class="lang-switch">
-        <button id="btnEn" onclick="setLang('en')">EN</button>
-        <button id="btnFa" class="on" onclick="setLang('fa')">FA</button>
+<div class="w">
+  <div class="hdr">
+    <div class="hdr-l">
+      <button class="ib" id="th" onclick="togTheme()">☀️</button>
+      <div class="ls">
+        <button id="bEn" onclick="setL('en')">EN</button>
+        <button id="bFa" class="on" onclick="setL('fa')">FA</button>
       </div>
     </div>
     <div class="logo">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="url(#g)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="g" x1="2" y1="2" x2="22" y2="22"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#ec4899"/></linearGradient></defs></svg>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="url(#g)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="g" x1="2" y1="2" x2="22" y2="22"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#ec4899"/></linearGradient></defs></svg>
       VROOM
     </div>
-    <button class="icon-btn">⚡</button>
+    <button class="ib">⚡</button>
   </div>
 
-  <!-- STATUS CARD -->
   <div class="card">
-    <div class="card-title">
-      <span data-fa="Subscription /" data-en="Subscription /">Subscription /</span>
-      <span class="badge">✨ {link['label']} ✨</span>
+    <div class="ct"><span data-f="Subscription /" data-e="Subscription /">Subscription /</span><span class="badge">✨ {link['label']} ✨</span></div>
+    <div class="sr">
+      <span data-f="اتصالات : {live_conns}" data-e="Connections : {live_conns}">اتصالات : {live_conns}</span>
+      <span class="so"><span class="dot"></span> <span data-f="سرور آنلاین" data-e="Server Online">سرور آنلاین</span></span>
     </div>
-    <div class="status-row">
-      <span data-fa="اتصالات : {live_conns}" data-en="Connections : {live_conns}">اتصالات : {live_conns}</span>
-      <span class="status-online"><span class="dot"></span> <span data-fa="سرور آنلاین" data-en="Server Online">سرور آنلاین</span></span>
+    <div class="sg">
+      <div class="rw"><div class="rg" id="rg"><div class="ri" id="pc">0%</div></div></div>
+      <div class="st"><div class="l" data-f="باقی" data-e="Left">باقی</div><div class="v">{remaining}{' GB' if remaining!='∞' else ''}</div></div>
+      <div class="st"><div class="l" data-f="وضعیت" data-e="Status">وضعیت</div><div class="v" style="color:{sc};font-size:12px" data-f="{status_fa}" data-e="{status_en}">{status_fa}</div></div>
+      <div class="st"><div class="l" data-f="مصرف" data-e="Used">مصرف</div><div class="v">{used_gb} GB</div></div>
     </div>
-    <div class="stats-grid">
-      <div class="ring-wrap">
-        <div class="ring" id="ring"><div class="ring-inner" id="pct">0%</div></div>
-      </div>
-      <div class="stat">
-        <div class="label" data-fa="باقی" data-en="Left">باقی</div>
-        <div class="value">{remaining}{' GB' if remaining != '∞' else ''}</div>
-      </div>
-      <div class="stat">
-        <div class="label" data-fa="وضعیت" data-en="Status">وضعیت</div>
-        <div class="value" style="color:{sc};font-size:13px" data-fa="{status_fa}" data-en="{status_en}">{status_fa}</div>
-      </div>
-      <div class="stat">
-        <div class="label" data-fa="مصرف" data-en="Used">مصرف</div>
-        <div class="value">{used_gb} GB</div>
-      </div>
-    </div>
-    <div class="progress-bar"><div class="progress-fill" id="bar"></div></div>
+    <div class="pb"><div class="pf" id="bf"></div></div>
   </div>
 
-  <!-- SUB LINK CARD -->
   <div class="card">
-    <div class="card-title">
-      <span data-fa="لینک ساب (دریافت‌ها)" data-en="Sub Link (for apps)">لینک ساب (دریافت‌ها)</span>
-      <span style="font-size:16px">🔗</span>
+    <div class="ct"><span data-f="لینک ساب (دریافت‌ها)" data-e="Sub Link (for apps)">لینک ساب (دریافت‌ها)</span><span>🔗</span></div>
+    <div class="srow">
+      <button class="cb" onclick="cp(SUB)" data-f="کپی" data-e="Copy">کپی</button>
+      <div class="surl">{sub_url}</div>
     </div>
-    <div class="sub-row">
-      <button class="copy-btn" onclick="cp(SUB)" data-fa="کپی" data-en="Copy">کپی</button>
-      <div class="sub-url">{sub_url}</div>
-    </div>
-    <div class="info-pills">
-      <div class="pill">
-        <div class="p-label">🛡️ <span data-fa="وضعیت" data-en="Status">وضعیت</span></div>
-        <div class="p-value" style="color:{sc}" data-fa="{status_fa}" data-en="{status_en}">{status_fa}</div>
-      </div>
-      <div class="pill">
-        <div class="p-label">📅 <span data-fa="انقضا" data-en="Expiry">انقضا</span></div>
-        <div class="p-value" style="color:#f59e0b">{exp_disp}</div>
-      </div>
-      <div class="pill">
-        <div class="p-label">⏳ <span data-fa="باقی" data-en="Left">باقی</span></div>
-        <div class="p-value" style="color:#06b6d4" data-fa="{days_fa} روز" data-en="{days_en} days">{days_fa} روز</div>
-      </div>
+    <div class="ip">
+      <div class="pi"><div class="pl">🛡️ <span data-f="وضعیت" data-e="Status">وضعیت</span></div><div class="pv" style="color:{sc}" data-f="{status_fa}" data-e="{status_en}">{status_fa}</div></div>
+      <div class="pi"><div class="pl">📅 <span data-f="انقضا" data-e="Expiry">انقضا</span></div><div class="pv" style="color:#f59e0b">{exp_disp}</div></div>
+      <div class="pi"><div class="pl">⏳ <span data-f="باقی" data-e="Left">باقی</span></div><div class="pv" style="color:#06b6d4" data-f="{days_fa} روز" data-e="{days_en} days">{days_fa} روز</div></div>
     </div>
   </div>
 
-  <!-- CONFIG + QR -->
   <div class="card">
-    <div class="card-title">
-      <span data-fa="کانفیگ و QR" data-en="Config & QR">کانفیگ و QR</span>
-      <span style="font-size:16px">📱</span>
-    </div>
-    <div class="cfg-box" onclick="cp(CFG)">
-      {server_link}
-      <span class="copy-icon">📋</span>
-    </div>
-    <div class="qr-wrap">
-      <div class="qr" onclick="document.getElementById('qrm').style.display='flex'">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={qr_data}" alt="QR"/>
-      </div>
-    </div>
-    <div class="action-btns">
-      <button class="btn-share" onclick="shareApp()" data-fa="اشتراک" data-en="Share">اشتراک</button>
-      <button class="btn-add" onclick="cp(SUB)" data-fa="+ اضافه اشتراک +" data-en="+ Add Sub +">+ اضافه اشتراک +</button>
+    <div class="ct"><span data-f="کانفیگ و QR" data-e="Config & QR">کانفیگ و QR</span><span>📱</span></div>
+    <div class="cfg" onclick="cp(CFG)">{server_link}</div>
+    <div class="qr-w"><div class="qr" onclick="document.getElementById('qrm').style.display='flex'"><img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={qr_data}" alt="QR" loading="lazy"/></div></div>
+    <div class="ab">
+      <button class="bs" onclick="share()" data-f="اشتراک" data-e="Share">اشتراک</button>
+      <button class="ba" onclick="cp(SUB)" data-f="+ اضافه اشتراک +" data-e="+ Add Sub +">+ اضافه اشتراک +</button>
     </div>
   </div>
 
-  <!-- QUICK TOOLS -->
   <div class="card">
-    <div class="card-title">
-      <span data-fa="ابزارهای سریع" data-en="Quick Tools">ابزارهای سریع</span>
-      <span style="font-size:16px">⚡</span>
+    <div class="ct"><span data-f="ابزارهای سریع" data-e="Quick Tools">ابزارهای سریع</span><span>⚡</span></div>
+    <div class="pr" id="pb">
+      <button class="pb2 on" data-p="android" onclick="sp('android',this)">Android</button>
+      <button class="pb2" data-p="ios" onclick="sp('ios',this)">iOS</button>
+      <button class="pb2" data-p="windows" onclick="sp('windows',this)">Windows</button>
+      <button class="pb2" data-p="macos" onclick="sp('macos',this)">macOS</button>
+      <button class="pb2" data-p="linux" onclick="sp('linux',this)">Linux</button>
     </div>
-    <div class="plat-row" id="platBar">
-      <button class="plat-btn on" data-p="android" onclick="showPlat('android',this)">Android</button>
-      <button class="plat-btn" data-p="ios" onclick="showPlat('ios',this)">iOS</button>
-      <button class="plat-btn" data-p="windows" onclick="showPlat('windows',this)">Windows</button>
-      <button class="plat-btn" data-p="macos" onclick="showPlat('macos',this)">macOS</button>
-      <button class="plat-btn" data-p="linux" onclick="showPlat('linux',this)">Linux</button>
-    </div>
-    <div class="apps-grid" id="appsGrid"></div>
+    <div class="ag" id="ag"></div>
   </div>
-
-  <div class="footer">Powered by <b>VROOM</b></div>
+  <div class="ft">Powered by <b>VROOM</b></div>
 </div>
-
-<div id="qrm" onclick="this.style.display='none'">
-  <img src="https://api.qrserver.com/v1/create-qr-code/?size=360x360&data={qr_data}" alt="QR"/>
-</div>
-<div class="toast" id="toast"></div>
-
+<div id="qrm" onclick="this.style.display='none'"><img src="https://api.qrserver.com/v1/create-qr-code/?size=340x340&data={qr_data}" alt="QR" loading="lazy"/></div>
+<div class="toast" id="to"></div>
 <script>
-const SUB = '{sub_url}';
-const CFG = `{server_link}`;
-const P = {percent};
-let LANG = localStorage.getItem('vroom_lang') || 'fa';
-
-const CATALOG = {{
-  android: [
-    {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayng',name:'v2rayNG',scheme:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'v2box',name:'V2Box',scheme:'v2box://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'Happ',name:'Happ',scheme:'happ://import?url='+encodeURIComponent(SUB)}}
-  ],
-  ios: [
-    {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2box',name:'V2Box',scheme:'v2box://install-config?url='+encodeURIComponent(SUB)}},
-    {{id:'Happ',name:'Happ',scheme:'happ://import?url='+encodeURIComponent(SUB)}}
-  ],
-  windows: [
-    {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayn',name:'v2rayN',scheme:'v2rayN://import?url='+encodeURIComponent(SUB)}}
-  ],
-  macos: [
-    {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2box',name:'V2Box',scheme:'v2box://install-config?url='+encodeURIComponent(SUB)}}
-  ],
-  linux: [
-    {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
-    {{id:'v2rayn',name:'v2rayN',scheme:'v2rayN://import?url='+encodeURIComponent(SUB)}}
-  ]
-}};
-
-function setLang(l) {{
-  LANG = l;
-  localStorage.setItem('vroom_lang', l);
-  document.documentElement.lang = l;
-  document.documentElement.dir = l === 'fa' ? 'rtl' : 'ltr';
-  document.getElementById('btnFa').classList.toggle('on', l === 'fa');
-  document.getElementById('btnEn').classList.toggle('on', l === 'en');
-  document.querySelectorAll('[data-fa]').forEach(el => {{
-    el.textContent = l === 'fa' ? el.dataset.fa : el.dataset.en;
-  }});
-}}
-
-function toggleTheme() {{
-  const cur = document.documentElement.getAttribute('data-theme');
-  const next = cur === 'light' ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', next);
-  localStorage.setItem('vroom_theme', next);
-  document.getElementById('themeBtn').textContent = next === 'light' ? '☀️' : '🌙';
-}}
-
-async function getAppPhoto(appId) {{
-  try {{
-    const r = await fetch(`/api/app-photo/${{appId}}`);
-    if (r.ok) {{
-      const d = await r.json();
-      return {{url: d.url, name: d.name}};
-    }}
-  }} catch(e) {{}}
-  return {{url: null, name: appId}};
-}}
-
-async function showPlat(p, btn) {{
-  document.querySelectorAll('.plat-btn').forEach(b => b.classList.remove('on'));
-  if (btn) btn.classList.add('on');
-  const list = CATALOG[p] || [];
-  const grid = document.getElementById('appsGrid');
-  grid.innerHTML = list.map(a => `
-    <div class="app-card" onclick="openApp('${{a.id}}','${{p}}')" id="app-${{a.id}}">
-      <div class="app-icon"><span style="font-size:18px">⬇️</span></div>
-      <div class="app-name">${{a.name}}</div>
-      <div class="app-hint">Tap to open</div>
-    </div>
-  `).join('');
-  for (const a of list) {{
-    const data = await getAppPhoto(a.id);
-    const icon = document.querySelector(`#app-${{a.id}} .app-icon`);
-    if (icon && data.url) {{
-      icon.innerHTML = `<img src="${{data.url}}" alt="${{a.name}}" onerror="this.parentElement.innerHTML='${{a.name[0]}}'"/>`;
-    }} else if (icon) {{
-      icon.innerHTML = `<span style="font-weight:800;font-size:18px">${{a.name[0]}}</span>`;
-    }}
-  }}
-}}
-
-function openApp(id, plat) {{
-  const a = (CATALOG[plat] || []).find(x => x.id === id);
-  if (!a) return;
-  if (a.scheme) {{ try {{ location.href = a.scheme; }} catch(e) {{}} }}
-  setTimeout(() => {{ cp(SUB); toast(LANG==='fa'?'لینک ساب کپی شد':'Sub link copied'); }}, 1400);
-}}
-
-function shareApp() {{
-  if (navigator.share) {{
-    navigator.share({{title:'VROOM', url:SUB}}).catch(() => cp(SUB));
-  }} else {{
-    cp(SUB);
-  }}
-}}
-
-function cp(t) {{
-  if (navigator.clipboard) {{
-    navigator.clipboard.writeText(t).then(() => toast(LANG==='fa'?'کپی شد ✅':'Copied ✅'));
-  }} else {{
-    const i = document.createElement('input'); i.value = t;
-    document.body.appendChild(i); i.select(); document.execCommand('copy');
-    document.body.removeChild(i); toast(LANG==='fa'?'کپی شد ✅':'Copied ✅');
-  }}
-}}
-
-function toast(m) {{
-  const t = document.getElementById('toast');
-  t.textContent = m; t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2300);
-}}
-
-// init
-const savedTheme = localStorage.getItem('vroom_theme') || 'light';
-document.documentElement.setAttribute('data-theme', savedTheme);
-document.getElementById('themeBtn').textContent = savedTheme === 'light' ? '☀️' : '🌙';
-setLang(LANG);
-showPlat('android', document.querySelector('.plat-btn'));
-setTimeout(() => {{
-  document.getElementById('ring').style.background = `conic-gradient(#3b82f6 0% ${{P}}%, ${{savedTheme==='dark'?'#1e293b':'#e2e8f0'}} ${{P}}% 100%)`;
-  document.getElementById('bar').style.width = P + '%';
-  document.getElementById('pct').textContent = P + '%';
-}}, 200);
+const SUB='{sub_url}',CFG=`{server_link}`,P={percent};
+let L=localStorage.getItem('vl')||'fa';
+const C={{android:[{{id:'Hiddify',n:'Hiddify',s:'hiddify://import/'+encodeURIComponent(SUB)}},{{id:'v2rayng',n:'v2rayNG',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},{{id:'v2box',n:'V2Box',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},{{id:'Happ',n:'Happ',s:'happ://import?url='+encodeURIComponent(SUB)}}],ios:[{{id:'Hiddify',n:'Hiddify',s:'hiddify://import/'+encodeURIComponent(SUB)}},{{id:'v2box',n:'V2Box',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},{{id:'Happ',n:'Happ',s:'happ://import?url='+encodeURIComponent(SUB)}}],windows:[{{id:'Hiddify',n:'Hiddify',s:'hiddify://import/'+encodeURIComponent(SUB)}},{{id:'v2rayn',n:'v2rayN',s:'v2rayN://import?url='+encodeURIComponent(SUB)}}],macos:[{{id:'Hiddify',n:'Hiddify',s:'hiddify://import/'+encodeURIComponent(SUB)}},{{id:'v2box',n:'V2Box',s:'v2box://install-config?url='+encodeURIComponent(SUB)}}],linux:[{{id:'Hiddify',n:'Hiddify',s:'hiddify://import/'+encodeURIComponent(SUB)}},{{id:'v2rayn',n:'v2rayN',s:'v2rayN://import?url='+encodeURIComponent(SUB)}}]}};
+function setL(l){{L=l;localStorage.setItem('vl',l);document.documentElement.lang=l;document.documentElement.dir=l==='fa'?'rtl':'ltr';document.getElementById('bFa').classList.toggle('on',l==='fa');document.getElementById('bEn').classList.toggle('on',l==='en');document.querySelectorAll('[data-f]').forEach(e=>e.textContent=l==='fa'?e.dataset.f:e.dataset.e)}}
+function togTheme(){{const c=document.documentElement.getAttribute('data-theme'),n=c==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);localStorage.setItem('vt',n);document.getElementById('th').textContent=n==='light'?'☀️':'🌙'}}
+async function sp(p,b){{document.querySelectorAll('.pb2').forEach(x=>x.classList.remove('on'));if(b)b.classList.add('on');const list=C[p]||[];const g=document.getElementById('ag');g.innerHTML=list.map(a=>`<div class="ac" onclick="oa('${{a.id}}','${{p}}')" id="a-${{a.id}}"><div class="ai"><span>⬇️</span></div><div class="an">${{a.n}}</div><div class="ah">Tap to open</div></div>`).join('');for(const a of list){{try{{const r=await fetch('/api/app-photo/'+a.id);if(r.ok){{const d=await r.json();const el=document.querySelector('#a-'+a.id+' .ai');if(el&&d.url)el.innerHTML=`<img src="${{d.url}}" alt="${{a.n}}" loading="lazy" onerror="this.parentElement.innerHTML='${{a.n[0]}}'"/>`;else if(el)el.innerHTML=`<span style="font-weight:800">${{a.n[0]}}</span>`}}}}catch(e){{}}}}}}
+function oa(id,p){{const a=(C[p]||[]).find(x=>x.id===id);if(!a)return;if(a.s)try{{location.href=a.s}}catch(e){{}}setTimeout(()=>{{cp(SUB);toast(L==='fa'?'لینک ساب کپی شد':'Sub link copied')}},1200)}}
+function share(){{if(navigator.share)navigator.share({{title:'VROOM',url:SUB}}).catch(()=>cp(SUB));else cp(SUB)}}
+function cp(t){{if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>toast(L==='fa'?'کپی شد ✅':'Copied ✅'));else{{const i=document.createElement('input');i.value=t;document.body.appendChild(i);i.select();document.execCommand('copy');document.body.removeChild(i);toast(L==='fa'?'کپی شد ✅':'Copied ✅')}}}}
+function toast(m){{const t=document.getElementById('to');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200)}}
+const st=localStorage.getItem('vt')||'light';document.documentElement.setAttribute('data-theme',st);document.getElementById('th').textContent=st==='light'?'☀️':'🌙';setL(L);sp('android',document.querySelector('.pb2'));
+requestAnimationFrame(()=>{{document.getElementById('rg').style.background=`conic-gradient(#3b82f6 0% ${{P}}%,${{st==='dark'?'#1e293b':'#e2e8f0'}} ${{P}}% 100%)`;document.getElementById('bf').style.width=P+'%';document.getElementById('pc').textContent=P+'%'}});
 </script>
-</body>
-</html>"""
+</body></html>"""
     return HTMLResponse(content=html)
 
-# ================================================================
-# ========== WS PROXY ==========
-# ================================================================
+# ===================== WS =====================
 RELAY_BUF = 2 * 1024 * 1024
 
 async def parse_vless_header(first_chunk: bytes):
@@ -1441,188 +1060,201 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
                 if uid and ip and not any(c.get("uuid") == uid and c.get("ip") == ip for c in connections.values()):
                     remove_ip_from_link(uid, ip)
 
-# ================================================================
-# ========== LOGIN & DASHBOARD ==========
-# ================================================================
-LOGIN_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VROOM</title>
+# ===================== LOGIN + DASHBOARD (Premium) =====================
+LOGIN_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl" data-theme="light"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VROOM</title>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@700;900&family=Inter:wght@800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#eef2ff;--card:rgba(255,255,255,.85);--border:rgba(255,255,255,.9);--text:#1e293b;--blue:#3b82f6;--pink:#ec4899}
+:root{--bg:#f0f4ff;--card:rgba(255,255,255,.82);--border:rgba(255,255,255,.9);--text:#0f172a;--blue:#3b82f6;--pink:#ec4899}
+[data-theme=dark]{--bg:#0a0e1a;--card:rgba(15,23,42,.8);--border:rgba(255,255,255,.08);--text:#f1f5f9}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Vazirmatn,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);direction:rtl;
-background-image:radial-gradient(ellipse 80% 50% at 15% 0%,rgba(99,102,241,.2),transparent 55%),radial-gradient(ellipse 70% 45% at 90% 20%,rgba(236,72,153,.15),transparent 50%)}
-.card{background:var(--card);border:1px solid var(--border);border-radius:28px;padding:42px 34px;width:100%;max-width:380px;
-backdrop-filter:blur(24px);box-shadow:0 20px 50px -12px rgba(99,102,241,.2)}
-h1{font-size:30px;font-weight:900;text-align:center;font-family:Inter;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:28px}
-input{width:100%;padding:14px 16px;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.2);border-radius:14px;color:var(--text);font-size:15px;font-family:inherit;outline:none;margin-bottom:14px}
-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,.15)}
-.btn{width:100%;padding:15px;background:linear-gradient(135deg,var(--blue),#6366f1);border:none;border-radius:14px;color:#fff;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 8px 24px rgba(59,130,246,.35)}
-.err{color:#ec4899;font-size:13px;text-align:center;display:none;margin-bottom:12px}.err.show{display:block}
+body{font-family:Vazirmatn,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);direction:rtl;transition:background .3s;
+background-image:radial-gradient(ellipse 80% 50% at 15% 0%,rgba(99,102,241,.2),transparent 55%),radial-gradient(ellipse 70% 45% at 90% 20%,rgba(236,72,153,.14),transparent 50%)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:28px;padding:40px 32px;width:100%;max-width:370px;backdrop-filter:blur(22px);box-shadow:0 20px 50px -12px rgba(99,102,241,.18)}
+h1{font-size:28px;font-weight:900;text-align:center;font-family:Inter;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:26px}
+input{width:100%;padding:13px 15px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);border-radius:13px;color:var(--text);font-size:14px;font-family:inherit;outline:none;margin-bottom:12px}
+input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+.btn{width:100%;padding:14px;background:linear-gradient(135deg,var(--blue),#6366f1);border:none;border-radius:13px;color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 8px 22px rgba(59,130,246,.3)}
+.err{color:#ec4899;font-size:12px;text-align:center;display:none;margin-bottom:10px}.err.show{display:block}
 </style></head><body>
 <div class="card"><h1>VROOM</h1><div class="err" id="err"></div>
 <form id="f"><input type="password" id="pw" placeholder="رمز عبور / Password" autofocus><button class="btn" type="submit">ورود / Login</button></form></div>
-<script>document.getElementById('f').onsubmit=async e=>{e.preventDefault();const err=document.getElementById('err');err.classList.remove('show');
+<script>
+const t=localStorage.getItem('vt')||'light';document.documentElement.setAttribute('data-theme',t);
+document.getElementById('f').onsubmit=async e=>{e.preventDefault();const err=document.getElementById('err');err.classList.remove('show');
 try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('pw').value})});
-if(!r.ok)throw new Error('رمز اشتباه است');location.href='/dashboard'}catch(ex){err.textContent=ex.message;err.classList.add('show')}}</script></body></html>"""
+if(!r.ok)throw new Error('رمز اشتباه است');location.href='/dashboard'}catch(ex){err.textContent=ex.message;err.classList.add('show')}}
+</script></body></html>"""
 
-DASHBOARD_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl"><head>
+DASHBOARD_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl" data-theme="light"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>VROOM Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700;800;900&family=Inter:wght@800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700;800;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#eef2ff;--card:rgba(255,255,255,.82);--border:rgba(255,255,255,.9);--text:#1e293b;--muted:#64748b;--blue:#3b82f6;--pink:#ec4899;--green:#22c55e;--red:#ec4899;--radius:18px;--shadow:0 10px 30px -8px rgba(99,102,241,.15)}
+:root{--bg:#f0f4ff;--card:rgba(255,255,255,.8);--border:rgba(255,255,255,.9);--text:#0f172a;--muted:#64748b;--blue:#3b82f6;--indigo:#6366f1;--pink:#ec4899;--green:#10b981;--red:#f43f5e;--radius:18px;--shadow:0 10px 32px -8px rgba(99,102,241,.15)}
+[data-theme=dark]{--bg:#0a0e1a;--card:rgba(15,23,42,.78);--border:rgba(255,255,255,.07);--text:#f1f5f9;--muted:#94a3b8;--shadow:0 10px 32px -8px rgba(0,0,0,.45)}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Vazirmatn,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;direction:rtl;
-background-image:radial-gradient(ellipse 70% 40% at 10% 0%,rgba(99,102,241,.15),transparent 50%),radial-gradient(ellipse 50% 30% at 90% 5%,rgba(236,72,153,.1),transparent 45%)}
-.side{width:200px;background:rgba(255,255,255,.7);border-left:1px solid rgba(148,163,184,.15);position:fixed;right:0;top:0;bottom:0;padding:16px 10px;display:flex;flex-direction:column;z-index:40;backdrop-filter:blur(20px)}
-.brand{font-size:18px;font-weight:900;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter;padding:8px;margin-bottom:14px}
-.ni{padding:10px 12px;border-radius:12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;margin-bottom:3px;border:none;background:none;width:100%;text-align:right;font-family:inherit;transition:.2s}
+body{font-family:Vazirmatn,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;direction:rtl;transition:background .3s,color .3s;
+background-image:radial-gradient(ellipse 70% 40% at 8% 0%,rgba(99,102,241,.14),transparent 50%),radial-gradient(ellipse 50% 30% at 95% 5%,rgba(236,72,153,.1),transparent 45%)}
+.side{width:200px;background:var(--card);border-left:1px solid var(--border);position:fixed;right:0;top:0;bottom:0;padding:14px 10px;display:flex;flex-direction:column;z-index:40;backdrop-filter:blur(18px);transition:transform .25s}
+.brand{font-size:17px;font-weight:900;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter;padding:6px;margin-bottom:12px}
+.ni{padding:9px 11px;border-radius:11px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;margin-bottom:2px;border:none;background:none;width:100%;text-align:right;font-family:inherit;transition:.15s}
 .ni:hover,.ni.on{background:rgba(59,130,246,.1);color:var(--blue)}
-.main{margin-right:200px;padding:20px 16px}
+.main{margin-right:200px;padding:18px 14px}
 .page{display:none}.page.on{display:block}
-.pt{font-size:18px;font-weight:900;margin-bottom:16px;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
-.st{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;backdrop-filter:blur(16px);box-shadow:var(--shadow)}
-.st .l{font-size:10px;color:var(--muted);font-weight:600}.st .v{font-size:17px;font-weight:800;margin-top:4px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;backdrop-filter:blur(16px);box-shadow:var(--shadow)}
-.card h3{font-size:12px;color:var(--blue);margin-bottom:10px;font-weight:700}
-.btn{padding:8px 14px;border-radius:11px;border:none;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;transition:.2s}
-.bg{background:linear-gradient(135deg,var(--blue),#6366f1);color:#fff;box-shadow:0 6px 18px rgba(59,130,246,.3)}
+.pt{font-size:17px;font-weight:900;margin-bottom:14px;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;display:flex;align-items:center;gap:8px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:12px}
+.st{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:13px;backdrop-filter:blur(14px);box-shadow:var(--shadow)}
+.st .l{font-size:10px;color:var(--muted);font-weight:600}.st .v{font-size:16px;font-weight:800;margin-top:3px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:11px;backdrop-filter:blur(14px);box-shadow:var(--shadow)}
+.card h3{font-size:12px;color:var(--blue);margin-bottom:9px;font-weight:700}
+.btn{padding:7px 13px;border-radius:10px;border:none;font-weight:700;font-size:11px;cursor:pointer;font-family:inherit;transition:transform .15s}
+.btn:active{transform:scale(.96)}
+.bg{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff;box-shadow:0 5px 16px rgba(59,130,246,.28)}
 .bo{background:rgba(59,130,246,.1);color:var(--blue);border:1px solid rgba(59,130,246,.2)}
-.bd{background:rgba(236,72,153,.1);color:var(--red)}
-input,select{width:100%;padding:10px 12px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);border-radius:11px;color:var(--text);font-family:inherit;font-size:13px;outline:none;margin-bottom:8px}
-table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:right;padding:8px;color:var(--muted);border-bottom:1px solid rgba(148,163,184,.15);font-size:10px}td{padding:8px;border-bottom:1px solid rgba(148,163,184,.08)}
-.tag{display:inline-block;padding:3px 8px;border-radius:8px;font-size:10px;font-weight:700}.ton{background:rgba(34,197,94,.12);color:var(--green)}.toff{background:rgba(236,72,153,.1);color:var(--red)}
-.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(50px);background:var(--card);border:1px solid var(--border);padding:10px 18px;border-radius:12px;font-size:13px;color:var(--blue);opacity:0;transition:.3s;z-index:999;backdrop-filter:blur(16px);font-weight:700}
+.bd{background:rgba(244,63,94,.1);color:var(--red)}
+input,select{width:100%;padding:9px 11px;background:rgba(148,163,184,.07);border:1px solid rgba(148,163,184,.18);border-radius:10px;color:var(--text);font-family:inherit;font-size:12px;outline:none;margin-bottom:7px}
+input:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(59,130,246,.12)}
+table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;padding:7px;color:var(--muted);border-bottom:1px solid rgba(148,163,184,.12);font-size:10px}td{padding:7px;border-bottom:1px solid rgba(148,163,184,.06)}
+.tag{display:inline-block;padding:2px 7px;border-radius:7px;font-size:9px;font-weight:700}.ton{background:rgba(16,185,129,.12);color:var(--green)}.toff{background:rgba(244,63,94,.1);color:var(--red)}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%) translateY(40px);background:var(--card);border:1px solid var(--border);padding:9px 16px;border-radius:11px;font-size:12px;color:var(--blue);opacity:0;transition:.25s;z-index:999;backdrop-filter:blur(14px);font-weight:700}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-.mob{display:none;position:fixed;top:0;left:0;right:0;height:48px;background:rgba(255,255,255,.85);border-bottom:1px solid rgba(148,163,184,.15);z-index:50;align-items:center;justify-content:space-between;padding:0 14px;backdrop-filter:blur(16px)}
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:80;display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px)}.modal-bg.show{display:flex}
-.modal{background:rgba(255,255,255,.95);border:1px solid var(--border);border-radius:20px;padding:20px;width:92%;max-width:380px;backdrop-filter:blur(20px)}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.pulse{display:inline-block;width:8px;height:8px;background:var(--green);border-radius:50%;animation:p 1.6s infinite;margin:0 4px}
-@keyframes p{0%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}70%{box-shadow:0 0 0 8px transparent}}
-.lang{display:inline-flex;border:1px solid rgba(148,163,184,.2);border-radius:14px;overflow:hidden;font-size:11px;font-weight:700;margin-bottom:10px}
-.lang button{border:none;padding:5px 11px;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;font-weight:700}
-.lang button.on{background:linear-gradient(135deg,var(--blue),#6366f1);color:#fff}
-@media(max-width:768px){.side{transform:translateX(100%)}.side.open{transform:translateX(0)}.main{margin-right:0;padding-top:60px}.stats{grid-template-columns:1fr 1fr}.mob{display:flex}}
+.mob{display:none;position:fixed;top:0;left:0;right:0;height:46px;background:var(--card);border-bottom:1px solid var(--border);z-index:50;align-items:center;justify-content:space-between;padding:0 12px;backdrop-filter:blur(14px)}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:80;display:none;align-items:center;justify-content:center;backdrop-filter:blur(5px)}.modal-bg.show{display:flex}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px;width:92%;max-width:370px;backdrop-filter:blur(18px)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.pulse{display:inline-block;width:7px;height:7px;background:var(--green);border-radius:50%;animation:pu 1.6s infinite}
+@keyframes pu{0%{box-shadow:0 0 0 0 rgba(16,185,129,.45)}70%{box-shadow:0 0 0 7px transparent}}
+.lang{display:inline-flex;border:1px solid rgba(148,163,184,.18);border-radius:12px;overflow:hidden;font-size:10px;font-weight:700;margin-bottom:8px}
+.lang button{border:none;padding:4px 10px;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;font-weight:700}
+.lang button.on{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+@media(max-width:768px){.side{transform:translateX(100%)}.side.open{transform:translateX(0)}.main{margin-right:0;padding-top:56px}.stats{grid-template-columns:1fr 1fr}.mob{display:flex}}
 </style></head><body>
 <div class="mob"><span style="font-weight:900;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter">VROOM</span>
 <button class="btn bo" onclick="document.querySelector('.side').classList.toggle('open')">☰</button></div>
 <aside class="side">
 <div class="brand">VROOM</div>
 <div class="lang"><button type="button" id="lFa" class="on" onclick="setL('fa')">FA</button><button type="button" id="lEn" onclick="setL('en')">EN</button></div>
-<button class="ni on" data-p="dash" data-fa="📊 داشبورد" data-en="📊 Dashboard">📊 داشبورد</button>
-<button class="ni" data-p="links" data-fa="📡 اینباندها" data-en="📡 Inbounds">📡 اینباندها</button>
-<button class="ni" data-p="conn" data-fa="🔗 اتصالات" data-en="🔗 Connections">🔗 اتصالات</button>
-<button class="ni" data-p="addr" data-fa="🌐 آی‌پی تمیز" data-en="🌐 Clean IP">🌐 آی‌پی تمیز</button>
-<button class="ni" data-p="tg" data-fa="🤖 ربات تلگرام" data-en="🤖 Telegram">🤖 ربات تلگرام</button>
-<button class="ni" data-p="domain" data-fa="🌍 دامنه" data-en="🌍 Domain">🌍 دامنه</button>
-<button class="ni" data-p="sec" data-fa="🔒 امنیت" data-en="🔒 Security">🔒 امنیت</button>
+<button class="ni on" data-p="dash" data-f="📊 داشبورد" data-e="📊 Dashboard">📊 داشبورد</button>
+<button class="ni" data-p="links" data-f="📡 اینباندها" data-e="📡 Inbounds">📡 اینباندها</button>
+<button class="ni" data-p="conn" data-f="🔗 اتصالات" data-e="🔗 Connections">🔗 اتصالات</button>
+<button class="ni" data-p="addr" data-f="🌐 آی‌پی تمیز" data-e="🌐 Clean IP">🌐 آی‌پی تمیز</button>
+<button class="ni" data-p="tg" data-f="🤖 ربات تلگرام" data-e="🤖 Telegram">🤖 ربات تلگرام</button>
+<button class="ni" data-p="domain" data-f="🌍 دامنه" data-e="🌍 Domain">🌍 دامنه</button>
+<button class="ni" data-p="sec" data-f="🔒 امنیت" data-e="🔒 Security">🔒 امنیت</button>
 <div style="flex:1"></div>
-<button class="ni" style="color:var(--red)" data-fa="خروج" data-en="Logout" onclick="fetch('/api/logout',{method:'POST'}).then(()=>location='/login')">خروج</button>
+<button class="ni" style="color:var(--red)" data-f="خروج" data-e="Logout" onclick="fetch('/api/logout',{method:'POST'}).then(()=>location='/login')">خروج</button>
 </aside>
 <main class="main">
+<div class="topbar">
+  <div class="pt" id="pageTitle">داشبورد <span class="pulse"></span></div>
+  <button class="btn bo" id="themeBtn" onclick="togTheme()" style="padding:6px 10px;font-size:14px">☀️</button>
+</div>
 <section class="page on" id="p-dash">
-<div class="pt">داشبورد <span class="pulse"></span></div>
 <div class="stats">
-<div class="st"><div class="l">👥 اتصال</div><div class="v" id="s-cn">0</div></div>
-<div class="st"><div class="l">📥 دانلود</div><div class="v" id="s-dl" style="font-size:14px">0</div></div>
-<div class="st"><div class="l">📤 آپلود</div><div class="v" id="s-ul" style="font-size:14px">0</div></div>
-<div class="st"><div class="l">📦 کل</div><div class="v" id="s-tr" style="font-size:14px">0</div></div>
+<div class="st"><div class="l" data-f="اتصال" data-e="Connections">اتصال</div><div class="v" id="s-cn">0</div></div>
+<div class="st"><div class="l" data-f="دانلود" data-e="Download">دانلود</div><div class="v" id="s-dl" style="font-size:13px">0</div></div>
+<div class="st"><div class="l" data-f="آپلود" data-e="Upload">آپلود</div><div class="v" id="s-ul" style="font-size:13px">0</div></div>
+<div class="st"><div class="l" data-f="کل" data-e="Total">کل</div><div class="v" id="s-tr" style="font-size:13px">0</div></div>
 </div>
 <div class="stats">
-<div class="st"><div class="l">📡 لینک‌ها</div><div class="v" id="s-lk">0</div></div>
-<div class="st"><div class="l">⏱️ آپتایم</div><div class="v" id="s-up" style="font-size:13px">--</div></div>
-<div class="st"><div class="l">💻 CPU</div><div class="v" id="s-cpu">--</div></div>
-<div class="st"><div class="l">🧠 RAM</div><div class="v" id="s-ram">--</div></div>
+<div class="st"><div class="l" data-f="لینک‌ها" data-e="Links">لینک‌ها</div><div class="v" id="s-lk">0</div></div>
+<div class="st"><div class="l" data-f="آپتایم" data-e="Uptime">آپتایم</div><div class="v" id="s-up" style="font-size:12px">--</div></div>
+<div class="st"><div class="l">CPU</div><div class="v" id="s-cpu">--</div></div>
+<div class="st"><div class="l">RAM</div><div class="v" id="s-ram">--</div></div>
 </div>
-<div class="card"><h3>⚡ سریع</h3>
-<div style="display:flex;gap:8px;flex-wrap:wrap">
+<div class="card"><h3 data-f="⚡ ساخت سریع" data-e="⚡ Quick Create">⚡ ساخت سریع</h3>
+<div style="display:flex;gap:7px;flex-wrap:wrap">
 <button class="btn bg" onclick="qc(1)">+1GB</button>
 <button class="btn bg" onclick="qc(5)">+5GB</button>
 <button class="btn bg" onclick="qc(10)">+10GB</button>
-<button class="btn bo" onclick="resetAll()">ریست مصرف</button>
+<button class="btn bg" onclick="qc(50)">+50GB</button>
+<button class="btn bo" onclick="resetAll()" data-f="ریست مصرف" data-e="Reset Usage">ریست مصرف</button>
 </div></div>
 </section>
 <section class="page" id="p-links">
-<div class="pt">اینباندها <button class="btn bg" style="float:left" onclick="$('#addM').classList.add('show')">+ افزودن</button></div>
-<div class="card" style="overflow-x:auto"><table><thead><tr><th>نام</th><th>مصرف</th><th>IP</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody id="lb"></tbody></table></div>
-<p style="font-size:11px;color:var(--muted);margin-top:8px">📌 <b>ساب</b> = برای برنامه‌ها · <b>صفحه</b> = پنل کاربری</p>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+  <div class="pt" style="margin:0" data-f="اینباندها" data-e="Inbounds">اینباندها</div>
+  <button class="btn bg" onclick="$('#addM').classList.add('show')" data-f="+ افزودن" data-e="+ Add">+ افزودن</button>
+</div>
+<div class="card" style="overflow-x:auto"><table><thead><tr><th data-f="نام" data-e="Name">نام</th><th data-f="مصرف" data-e="Usage">مصرف</th><th>IP</th><th data-f="وضعیت" data-e="Status">وضعیت</th><th data-f="عملیات" data-e="Actions">عملیات</th></tr></thead><tbody id="lb"></tbody></table></div>
 </section>
 <section class="page" id="p-conn">
-<div class="pt">اتصالات <span class="pulse"></span></div>
-<div class="card"><table><thead><tr><th>اینباند</th><th>IP</th><th>ترافیک</th><th>از زمان</th></tr></thead><tbody id="cb"></tbody></table></div>
+<div class="pt" data-f="اتصالات" data-e="Connections">اتصالات <span class="pulse"></span></div>
+<div class="card"><table><thead><tr><th data-f="اینباند" data-e="Inbound">اینباند</th><th>IP</th><th data-f="ترافیک" data-e="Traffic">ترافیک</th><th data-f="از زمان" data-e="Since">از زمان</th></tr></thead><tbody id="cb"></tbody></table></div>
 </section>
 <section class="page" id="p-addr">
-<div class="pt">آی‌پی تمیز</div>
-<div class="card"><div class="grid2"><input id="new-addr" placeholder="IP/دامنه"><button class="btn bg" onclick="addAddr()">افزودن</button></div><div id="alist" style="margin-top:10px"></div></div>
+<div class="pt" data-f="آی‌پی تمیز" data-e="Clean IP">آی‌پی تمیز</div>
+<div class="card"><div class="grid2"><input id="new-addr" placeholder="IP / Domain"><button class="btn bg" onclick="addAddr()" data-f="افزودن" data-e="Add">افزودن</button></div><div id="alist" style="margin-top:9px"></div></div>
 </section>
 <section class="page" id="p-tg">
-<div class="pt">تلگرام</div>
+<div class="pt" data-f="ربات تلگرام" data-e="Telegram Bot">ربات تلگرام</div>
 <div class="card">
-<p style="font-size:12px;color:var(--muted);margin-bottom:10px">توکن از @BotFather · آی‌دی از @userinfobot · ربات دکمه‌ای</p>
-<input id="tg-tok" placeholder="توکن بات"><input id="tg-adm" placeholder="آی‌دی ادمین(ها)">
-<div style="display:flex;gap:8px"><button class="btn bg" onclick="saveTg()">فعال‌سازی</button><button class="btn bd" onclick="stopTg()">توقف</button></div>
-<div id="tg-st" style="margin-top:10px;font-size:13px;color:var(--muted)"></div>
+<p style="font-size:11px;color:var(--muted);margin-bottom:9px" data-f="توکن از @BotFather · آی‌دی از @userinfobot" data-e="Token from @BotFather · ID from @userinfobot">توکن از @BotFather · آی‌دی از @userinfobot</p>
+<input id="tg-tok" placeholder="Bot Token"><input id="tg-adm" placeholder="Admin ID(s)">
+<div style="display:flex;gap:7px"><button class="btn bg" onclick="saveTg()" data-f="فعال‌سازی" data-e="Enable">فعال‌سازی</button><button class="btn bd" onclick="stopTg()" data-f="توقف" data-e="Stop">توقف</button></div>
+<div id="tg-st" style="margin-top:9px;font-size:12px;color:var(--muted)"></div>
 </div>
 </section>
 <section class="page" id="p-domain">
-<div class="pt">دامنه</div>
-<div class="card"><input id="dom-in" placeholder="example.com"><button class="btn bg" onclick="saveDom()">ذخیره</button><div id="dom-cur" style="margin-top:8px;font-size:13px;color:var(--muted)"></div></div>
+<div class="pt" data-f="دامنه" data-e="Domain">دامنه</div>
+<div class="card"><input id="dom-in" placeholder="example.com"><button class="btn bg" onclick="saveDom()" data-f="ذخیره" data-e="Save">ذخیره</button><div id="dom-cur" style="margin-top:7px;font-size:12px;color:var(--muted)"></div></div>
 </section>
 <section class="page" id="p-sec">
-<div class="pt">امنیت</div>
-<div class="card"><input type="password" id="cpw" placeholder="رمز فعلی"><input type="password" id="npw" placeholder="رمز جدید"><button class="btn bg" onclick="chPass()">تغییر</button></div>
+<div class="pt" data-f="امنیت" data-e="Security">امنیت</div>
+<div class="card"><input type="password" id="cpw" placeholder="Current password"><input type="password" id="npw" placeholder="New password"><button class="btn bg" onclick="chPass()" data-f="تغییر" data-e="Change">تغییر</button></div>
 </section>
 </main>
 <div class="modal-bg" id="addM" onclick="if(event.target===this)this.classList.remove('show')">
-<div class="modal"><h3 style="color:var(--blue);margin-bottom:12px">افزودن اینباند</h3>
-<input id="nl" placeholder="نام انگلیسی">
-<div class="grid2"><input id="nlim" type="number" placeholder="حجم"><select id="nun"><option>GB</option><option>MB</option></select></div>
-<input id="nexp" type="number" placeholder="روز"><input id="nmax" type="number" placeholder="حداکثر IP">
-<button class="btn bg" style="width:100%" onclick="createL()">ساخت</button></div></div>
+<div class="modal"><h3 style="color:var(--blue);margin-bottom:10px" data-f="افزودن اینباند" data-e="Add Inbound">افزودن اینباند</h3>
+<input id="nl" placeholder="Name (English)">
+<div class="grid2"><input id="nlim" type="number" placeholder="Volume"><select id="nun"><option>GB</option><option>MB</option></select></div>
+<input id="nexp" type="number" placeholder="Days"><input id="nmax" type="number" placeholder="Max IP">
+<button class="btn bg" style="width:100%" onclick="createL()" data-f="ساخت" data-e="Create">ساخت</button></div></div>
 <div class="toast" id="toast"></div>
 <script>
 const $=s=>document.querySelector(s);let LANG=localStorage.getItem('vroom_dl')||'fa';
-function setL(l){LANG=l;localStorage.setItem('vroom_dl',l);document.documentElement.lang=l;document.documentElement.dir=l==='fa'?'rtl':'ltr';$('#lFa').classList.toggle('on',l==='fa');$('#lEn').classList.toggle('on',l==='en');document.querySelectorAll('[data-fa]').forEach(el=>{el.textContent=l==='fa'?el.dataset.fa:el.dataset.en})}
+function setL(l){LANG=l;localStorage.setItem('vroom_dl',l);document.documentElement.lang=l;document.documentElement.dir=l==='fa'?'rtl':'ltr';$('#lFa').classList.toggle('on',l==='fa');$('#lEn').classList.toggle('on',l==='en');document.querySelectorAll('[data-f]').forEach(el=>{el.textContent=l==='fa'?el.dataset.f:el.dataset.e})}
+function togTheme(){const c=document.documentElement.getAttribute('data-theme'),n=c==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);localStorage.setItem('vt',n);document.getElementById('themeBtn').textContent=n==='light'?'☀️':'🌙'}
 document.querySelectorAll('.ni[data-p]').forEach(el=>el.onclick=()=>go(el.dataset.p));
 function go(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));document.getElementById('p-'+id)?.classList.add('on');
 document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('on',n.dataset.p===id));document.querySelector('.side')?.classList.remove('open');
 if(id==='links')loadL();if(id==='conn')loadC();if(id==='addr')loadA();if(id==='tg')loadTg();if(id==='domain')loadDom()}
-function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2400)}
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200)}
 async function loadS(){try{const r=await fetch('/stats');if(!r.ok)return;const d=await r.json();
 $('#s-cn').textContent=d.active_connections;$('#s-dl').textContent=d.download_fmt||'0';$('#s-ul').textContent=d.upload_fmt||'0';
 $('#s-tr').textContent=d.total_fmt||(d.total_traffic_mb+' MB');$('#s-lk').textContent=d.links_count;$('#s-up').textContent=d.uptime;
 $('#s-cpu').textContent=(d.cpu_percent||0).toFixed(0)+'%';$('#s-ram').textContent=(d.memory_percent||0).toFixed(0)+'%';window._conns=d.connections_detail||[]}catch(e){}}
 async function loadL(){const r=await fetch('/api/links');const d=await r.json();const b=$('#lb');
-if(!d.links?.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--muted)">خالی</td></tr>';return}
+if(!d.links?.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--muted)">Empty</td></tr>';return}
 b.innerHTML=d.links.map(l=>{const u=(l.used_bytes/1e9).toFixed(2),lim=l.limit_bytes?(l.limit_bytes/1e9).toFixed(1)+'G':'∞';
 const sub=l.sub_url||(location.origin+'/sub/'+l.uuid),page=l.page_url||(location.origin+'/page/'+l.uuid);
 return `<tr><td><b>${l.label}</b></td><td>${u}/${lim}</td><td>${l.current_connections}/${l.max_connections||'∞'}</td>
-<td><span class="tag ${l.active&&!l.expired?'ton':'toff'}">${l.active&&!l.expired?'روشن':'خاموش'}</span></td>
-<td style="display:flex;gap:4px;flex-wrap:wrap">
-<button class="btn bo" style="padding:3px 8px;font-size:10px" onclick="navigator.clipboard.writeText('${sub}').then(()=>toast('ساب'))">ساب</button>
-<button class="btn bo" style="padding:3px 8px;font-size:10px" onclick="navigator.clipboard.writeText('${page}').then(()=>toast('صفحه'))">صفحه</button>
-<button class="btn bo" style="padding:3px 8px;font-size:10px" onclick="navigator.clipboard.writeText('${l.vless_link.replace(/'/g,"\\\\'")}').then(()=>toast('کانفیگ'))">کپی</button>
-<button class="btn bd" style="padding:3px 8px;font-size:10px" onclick="delL('${l.uuid}')">حذف</button></td></tr>`}).join('')}
+<td><span class="tag ${l.active&&!l.expired?'ton':'toff'}">${l.active&&!l.expired?(LANG==='fa'?'روشن':'ON'):(LANG==='fa'?'خاموش':'OFF')}</span></td>
+<td style="display:flex;gap:3px;flex-wrap:wrap">
+<button class="btn bo" style="padding:2px 7px;font-size:9px" onclick="navigator.clipboard.writeText('${sub}').then(()=>toast('Sub'))">Sub</button>
+<button class="btn bo" style="padding:2px 7px;font-size:9px" onclick="navigator.clipboard.writeText('${page}').then(()=>toast('Page'))">Page</button>
+<button class="btn bo" style="padding:2px 7px;font-size:9px" onclick="navigator.clipboard.writeText('${l.vless_link.replace(/'/g,"\\\\'")}').then(()=>toast('Config'))">Copy</button>
+<button class="btn bd" style="padding:2px 7px;font-size:9px" onclick="delL('${l.uuid}')">Del</button></td></tr>`}).join('')}
 function loadC(){const list=window._conns||[];const b=$('#cb');
-if(!list.length){b.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--muted)">هیچ</td></tr>';return}
-b.innerHTML=list.map(c=>`<tr><td>${c.uuid}</td><td>${c.ip}</td><td>${(c.bytes/1e6).toFixed(2)} MB</td><td style="font-size:11px">${(c.since||'').slice(11,19)}</td></tr>`).join('')}
-async function delL(u){if(!confirm('حذف؟'))return;await fetch('/api/links/'+u,{method:'DELETE'});toast('OK');loadL();loadS()}
+if(!list.length){b.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--muted)">None</td></tr>';return}
+b.innerHTML=list.map(c=>`<tr><td>${c.uuid}</td><td>${c.ip}</td><td>${(c.bytes/1e6).toFixed(2)} MB</td><td style="font-size:10px">${(c.since||'').slice(11,19)}</td></tr>`).join('')}
+async function delL(u){if(!confirm(LANG==='fa'?'حذف؟':'Delete?'))return;await fetch('/api/links/'+u,{method:'DELETE'});toast('OK');loadL();loadS()}
 async function createL(){const label=$('#nl').value.trim(),limit=parseFloat($('#nlim').value)||0,unit=$('#nun').value,expiry=parseFloat($('#nexp').value)||0,max=parseInt($('#nmax').value)||0;
-if(!label){toast('نام');return}
+if(!label){toast('Name required');return}
 const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,limit_value:limit,limit_unit:unit,expiry_days:expiry,max_connections:max})});
-if(!r.ok){toast((await r.json().catch(()=>({}))).detail||'خطا');return}toast('ساخته شد');$('#addM').classList.remove('show');loadL();loadS()}
+if(!r.ok){toast((await r.json().catch(()=>({}))).detail||'Error');return}toast(LANG==='fa'?'ساخته شد':'Created');$('#addM').classList.remove('show');loadL();loadS()}
 async function qc(gb){const n='u'+Math.floor(Math.random()*900+100);await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:n,limit_value:gb,limit_unit:'GB',expiry_days:30})});toast(n);loadS()}
-async function resetAll(){if(!confirm('ریست همه؟'))return;await fetch('/api/reset-all-usage',{method:'POST'});toast('ریست');loadL()}
-async function loadA(){const r=await fetch('/api/addresses');const d=await r.json();$('#alist').innerHTML=(d.addresses||[]).map((a,i)=>`<div style="display:flex;justify-content:space-between;padding:9px;background:rgba(148,163,184,.08);border-radius:10px;margin-bottom:5px;font-size:13px"><span>${a}</span><button class="btn bd" style="padding:3px 9px;font-size:11px" onclick="delA(${i})">حذف</button></div>`).join('')||'<div style="color:var(--muted);font-size:13px">خالی</div>'}
-async function addAddr(){const a=$('#new-addr').value.trim();if(!a)return;await fetch('/api/addresses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:a})});$('#new-addr').value='';loadA();toast('افزوده شد')}
+async function resetAll(){if(!confirm(LANG==='fa'?'ریست همه؟':'Reset all?'))return;await fetch('/api/reset-all-usage',{method:'POST'});toast('Reset');loadL()}
+async function loadA(){const r=await fetch('/api/addresses');const d=await r.json();$('#alist').innerHTML=(d.addresses||[]).map((a,i)=>`<div style="display:flex;justify-content:space-between;padding:8px;background:rgba(148,163,184,.06);border-radius:9px;margin-bottom:4px;font-size:12px"><span>${a}</span><button class="btn bd" style="padding:2px 8px;font-size:10px" onclick="delA(${i})">Del</button></div>`).join('')||'<div style="color:var(--muted);font-size:12px">Empty</div>'}
+async function addAddr(){const a=$('#new-addr').value.trim();if(!a)return;await fetch('/api/addresses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:a})});$('#new-addr').value='';loadA();toast('Added')}
 async function delA(i){await fetch('/api/addresses/'+i,{method:'DELETE'});loadA()}
-async function loadTg(){const r=await fetch('/api/telegram');const d=await r.json();$('#tg-st').innerHTML=d.enabled?'<span style="color:var(--green)">● روشن</span> — '+(d.admin_ids||[]).join(', '):'<span style="color:var(--red)">● خاموش</span>';if(d.admin_ids?.length)$('#tg-adm').value=d.admin_ids.join(' ')}
-async function saveTg(){const r=await fetch('/api/telegram',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('#tg-tok').value.trim(),admin_ids:$('#tg-adm').value.trim()})});const d=await r.json().catch(()=>({}));if(!r.ok){toast(d.detail||'خطا');return}toast(d.enabled?'روشن @'+(d.bot_username||''):'ذخیره');loadTg()}
-async function stopTg(){await fetch('/api/telegram/stop',{method:'POST'});toast('متوقف');loadTg()}
-async function loadDom(){const r=await fetch('/api/domain');const d=await r.json();$('#dom-cur').textContent='فعلی: '+(d.domain||'پیش‌فرض')}
-async function saveDom(){await fetch('/api/domain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:$('#dom-in').value.trim()})});toast('ذخیره');loadDom()}
-async function chPass(){const r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:$('#cpw').value,new_password:$('#npw').value})});if(!r.ok){toast((await r.json().catch(()=>({}))).detail||'خطا');return}toast('تغییر یافت')}
+async function loadTg(){const r=await fetch('/api/telegram');const d=await r.json();$('#tg-st').innerHTML=d.enabled?'<span style="color:var(--green)">● ON</span> — '+(d.admin_ids||[]).join(', '):'<span style="color:var(--red)">● OFF</span>';if(d.admin_ids?.length)$('#tg-adm').value=d.admin_ids.join(' ')}
+async function saveTg(){const r=await fetch('/api/telegram',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('#tg-tok').value.trim(),admin_ids:$('#tg-adm').value.trim()})});const d=await r.json().catch(()=>({}));if(!r.ok){toast(d.detail||'Error');return}toast(d.enabled?'ON @'+(d.bot_username||''):'Saved');loadTg()}
+async function stopTg(){await fetch('/api/telegram/stop',{method:'POST'});toast('Stopped');loadTg()}
+async function loadDom(){const r=await fetch('/api/domain');const d=await r.json();$('#dom-cur').textContent=(LANG==='fa'?'فعلی: ':'Current: ')+(d.domain||'Default')}
+async function saveDom(){await fetch('/api/domain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:$('#dom-in').value.trim()})});toast('Saved');loadDom()}
+async function chPass(){const r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:$('#cpw').value,new_password:$('#npw').value})});if(!r.ok){toast((await r.json().catch(()=>({}))).detail||'Error');return}toast(LANG==='fa'?'تغییر یافت':'Changed')}
+const st=localStorage.getItem('vt')||'light';document.documentElement.setAttribute('data-theme',st);document.getElementById('themeBtn').textContent=st==='light'?'☀️':'🌙';
 setL(LANG);loadS();setInterval(loadS,5000);
 </script></body></html>"""
 
@@ -1638,9 +1270,6 @@ async def dashboard_page(request: Request):
         return RedirectResponse("/login")
     return HTMLResponse(DASHBOARD_HTML)
 
-# ================================================================
-# ========== RUN ==========
-# ================================================================
 async def keep_alive():
     while True:
         await asyncio.sleep(600)
