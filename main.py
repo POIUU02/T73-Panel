@@ -2,11 +2,10 @@
 """
 VROOM Panel v5 - COMPLETE FIXED
 - /sub/{uid} → plain-text vless lines (FOR APPS)
-- /page/{uid} → beautiful bilingual panel + day/night
+- /page/{uid} → beautiful bilingual panel + day/night (Crystal Soft Glass UI - exact match to design)
 - Dashboard bilingual
 - Telegram button bot
-- REAL app photos from client/icons/ (7 apps) - FIXED
-+ Crystal / Aurora Glass UI (Premium Glassmorphism + Neon Blue/Magenta)
+- REAL app photos from client/icons/
 """
 import asyncio, json, os, hashlib, secrets, time, re, base64
 from datetime import datetime, timedelta
@@ -18,7 +17,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn, httpx, logging, psutil
 from pathlib import Path
-import aiofiles
 from contextlib import asynccontextmanager
 
 # ================================================================
@@ -79,66 +77,23 @@ SESSION_COOKIE, SESSION_TTL = "vroom_session", 60 * 60 * 24 * 7
 # ========== APP PHOTOS ==========
 # ================================================================
 APP_PHOTOS = {
-    "Hiddify": {
-        "file": "Hiddify.pnq",
-        "name": "Hiddify",
-        "fallback": "🛡️",
-        "download": "https://github.com/hiddify/hiddify-app/releases/latest"
-    },
-    "v2rayng": {
-        "file": "v2rayng.png",
-        "name": "v2rayNG",
-        "fallback": "📱",
-        "download": "https://github.com/2dust/v2rayNG/releases/latest"
-    },
-    "NPV Tunnel": {
-        "file": "NPV Tunnel.pnq",
-        "name": "NPV Tunnel",
-        "fallback": "🔒",
-        "download": "https://play.google.com/store/apps/details?id=com.npv.tunnel"
-    },
-    "Happ": {
-        "file": "Happ.pnq",
-        "name": "Happ",
-        "fallback": "🟢",
-        "download": "https://apps.apple.com/app/happ/id123456789"
-    },
-    "v2box": {
-        "file": "v2box.png",
-        "name": "V2Box",
-        "fallback": "📦",
-        "download": "https://apps.apple.com/app/v2box/id6446814670"
-    },
-    "v2rayn": {
-        "file": "v2rayn.png",
-        "name": "v2rayN",
-        "fallback": "💻",
-        "download": "https://github.com/2dust/v2rayN/releases/latest"
-    }
+    "Hiddify": {"file": "Hiddify.pnq", "name": "Hiddify", "fallback": "🛡️", "download": "https://github.com/hiddify/hiddify-app/releases/latest"},
+    "v2rayng": {"file": "v2rayng.png", "name": "v2rayNG", "fallback": "📱", "download": "https://github.com/2dust/v2rayNG/releases/latest"},
+    "NPV Tunnel": {"file": "NPV Tunnel.pnq", "name": "NPV Tunnel", "fallback": "🔒", "download": "https://play.google.com/store/apps/details?id=com.npv.tunnel"},
+    "Happ": {"file": "Happ.pnq", "name": "Happ", "fallback": "🟢", "download": "https://apps.apple.com/app/happ/id123456789"},
+    "v2box": {"file": "v2box.png", "name": "V2Box", "fallback": "📦", "download": "https://apps.apple.com/app/v2box/id6446814670"},
+    "v2rayn": {"file": "v2rayn.png", "name": "v2rayN", "fallback": "💻", "download": "https://github.com/2dust/v2rayN/releases/latest"}
 }
 
 @app.get("/api/app-photo/{app_id}")
 async def get_app_photo(app_id: str):
-    """دریافت عکس برنامه از پوشه client/icons/"""
     app_data = APP_PHOTOS.get(app_id)
     if not app_data:
         return {"url": None, "fallback": "📱", "download": ""}
-    
     filepath = STATIC_DIR / app_data["file"]
     if filepath.exists():
-        return {
-            "url": f"/client/icons/{app_data['file']}",
-            "fallback": app_data["fallback"],
-            "download": app_data["download"],
-            "name": app_data["name"]
-        }
-    
-    return {
-        "url": None,
-        "fallback": app_data["fallback"],
-        "download": app_data["download"],
-        "name": app_data["name"]
-    }
+        return {"url": f"/client/icons/{app_data['file']}", "fallback": app_data["fallback"], "download": app_data["download"], "name": app_data["name"]}
+    return {"url": None, "fallback": app_data["fallback"], "download": app_data["download"], "name": app_data["name"]}
 
 # ================================================================
 # ========== AUTH ==========
@@ -772,7 +727,7 @@ async def subscription_raw(uid: str, request: Request):
     return Response(content=raw, media_type="text/plain; charset=utf-8", headers=headers)
 
 # ================================================================
-# ========== PAGE HTML  (Crystal / Aurora Glass) ==========
+# ========== PAGE HTML  (Exact match to design + Day/Night + Bilingual) ==========
 # ================================================================
 @app.get("/page/{uid}")
 async def subscription_page(uid: str):
@@ -794,14 +749,14 @@ async def subscription_page(uid: str):
     elif link["limit_bytes"] and link["used_bytes"] >= link["limit_bytes"]:
         status_fa, status_en, sc = "محدود", "Limited", "#fbbf24"
     else:
-        status_fa, status_en, sc = "فعال", "Active", "#4ade80"
+        status_fa, status_en, sc = "فعال", "Active", "#22c55e"
     
     exp = link.get("expiry")
     if exp:
         try:
             ed = datetime.fromisoformat(exp)
             days_left = max(0, (ed - datetime.now()).days)
-            days_fa, days_en, exp_disp = f"{days_left} روز", f"{days_left} days", ed.strftime("%Y/%m/%d")
+            days_fa, days_en, exp_disp = f"{days_left}", f"{days_left}", ed.strftime("%Y/%m/%d")
         except Exception:
             days_fa = days_en = exp_disp = "∞"
     else:
@@ -813,35 +768,34 @@ async def subscription_page(uid: str):
     live_conns = count_connections_for_link(uid)
 
     html = f"""<!DOCTYPE html>
-<html lang="fa" dir="rtl" data-theme="dark">
+<html lang="fa" dir="rtl" data-theme="light">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <title>VROOM — {link['label']}</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;700;800;900&family=Vazirmatn:wght@400;600;700;800;900&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&family=Vazirmatn:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
 <style>
 :root {{
-  --bg: #07071a;
-  --glass: rgba(255,255,255,0.06);
-  --glass-border: rgba(255,255,255,0.12);
-  --text: #f0f2ff;
-  --muted: rgba(240,242,255,0.55);
-  --blue: #4f8cff;
-  --magenta: #ff4d9e;
-  --cyan: #22d3ee;
-  --green: #4ade80;
-  --radius: 22px;
-  --shadow: 0 20px 50px -12px rgba(0,0,0,0.55);
-  --glow-blue: 0 0 40px rgba(79,140,255,0.35);
-  --glow-mag: 0 0 40px rgba(255,77,158,0.3);
+  --bg: #eef2ff;
+  --card: rgba(255,255,255,0.82);
+  --card-border: rgba(255,255,255,0.9);
+  --text: #1e293b;
+  --muted: #64748b;
+  --blue: #3b82f6;
+  --blue2: #6366f1;
+  --pink: #ec4899;
+  --green: #22c55e;
+  --radius: 24px;
+  --shadow: 0 10px 40px -8px rgba(99,102,241,0.18), 0 4px 16px -4px rgba(0,0,0,0.06);
+  --glow: 0 8px 32px rgba(59,130,246,0.35);
 }}
-html[data-theme=light] {{
-  --bg: #eef1f8;
-  --glass: rgba(255,255,255,0.72);
-  --glass-border: rgba(0,0,0,0.06);
-  --text: #0f1220;
-  --muted: rgba(15,18,32,0.55);
-  --shadow: 0 20px 50px -12px rgba(0,0,0,0.12);
+html[data-theme="dark"] {{
+  --bg: #0b0f1a;
+  --card: rgba(20,25,45,0.78);
+  --card-border: rgba(255,255,255,0.08);
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --shadow: 0 12px 40px -8px rgba(0,0,0,0.55), 0 4px 16px rgba(59,130,246,0.12);
 }}
 *{{margin:0;padding:0;box-sizing:border-box}}
 body{{
@@ -849,323 +803,505 @@ body{{
   background:var(--bg);
   color:var(--text);
   min-height:100vh;
-  display:flex;
-  justify-content:center;
-  padding:20px 14px 40px;
-  transition:background .4s,color .4s;
+  padding:16px 14px 40px;
+  transition:background .35s,color .35s;
   overflow-x:hidden;
 }}
-/* ambient aurora */
+/* soft aurora background */
 body::before{{
   content:'';
   position:fixed;inset:0;pointer-events:none;z-index:0;
   background:
-    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(79,140,255,.28), transparent 55%),
-    radial-gradient(ellipse 70% 45% at 90% 10%, rgba(255,77,158,.22), transparent 50%),
-    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(34,211,238,.12), transparent 50%);
+    radial-gradient(ellipse 90% 60% at 10% -5%, rgba(99,102,241,.22), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 95% 5%, rgba(236,72,153,.18), transparent 50%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(59,130,246,.1), transparent 50%);
 }}
-.w{{max-width:440px;width:100%;position:relative;z-index:1}}
-.top{{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}}
-.logo{{font-family:Inter;font-size:22px;font-weight:900;
-  background:linear-gradient(135deg,var(--blue),var(--magenta));
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent}}
-.theme-btn{{
-  width:42px;height:42px;border-radius:14px;
-  background:var(--glass);border:1px solid var(--glass-border);
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-  color:var(--text);font-size:18px;cursor:pointer;
-  box-shadow:var(--shadow);transition:.25s;
+html[data-theme="dark"] body::before{{
+  background:
+    radial-gradient(ellipse 90% 60% at 10% -5%, rgba(99,102,241,.18), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 95% 5%, rgba(236,72,153,.14), transparent 50%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(59,130,246,.08), transparent 50%);
 }}
-.theme-btn:active{{transform:scale(.94)}}
+.wrap{{max-width:440px;margin:0 auto;position:relative;z-index:1}}
+
+/* ===== HEADER ===== */
+.header{{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:18px;padding:0 2px;
+}}
+.header-left{{display:flex;align-items:center;gap:10px}}
+.icon-btn{{
+  width:40px;height:40px;border-radius:14px;
+  background:var(--card);border:1px solid var(--card-border);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:18px;box-shadow:var(--shadow);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  transition:.2s;color:var(--text);
+}}
+.icon-btn:active{{transform:scale(.94)}}
+.lang-switch{{
+  display:flex;background:var(--card);border:1px solid var(--card-border);
+  border-radius:14px;overflow:hidden;box-shadow:var(--shadow);
+  backdrop-filter:blur(16px);
+}}
+.lang-switch button{{
+  border:none;padding:8px 12px;font-size:12px;font-weight:700;
+  background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;
+  transition:.2s;
+}}
+.lang-switch button.on{{
+  background:linear-gradient(135deg,var(--blue),var(--blue2));
+  color:#fff;
+}}
+.logo{{
+  display:flex;align-items:center;gap:6px;
+  font-family:Inter;font-weight:900;font-size:20px;
+  background:linear-gradient(135deg,#6366f1,#ec4899);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}}
+.logo span{{font-size:11px;font-weight:600;opacity:.7;display:block;letter-spacing:.5px;margin-top:-2px}}
+
+/* ===== CARDS ===== */
 .card{{
-  background:var(--glass);
-  border:1px solid var(--glass-border);
+  background:var(--card);
+  border:1px solid var(--card-border);
   border-radius:var(--radius);
   padding:18px;
   margin-bottom:14px;
-  backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);
   box-shadow:var(--shadow);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
   position:relative;
-  overflow:hidden;
 }}
-.card::after{{
-  content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
-  background:linear-gradient(135deg,rgba(255,255,255,.08),transparent 40%,transparent 60%,rgba(255,255,255,.04));
+.card-title{{
+  font-size:15px;font-weight:800;margin-bottom:14px;
+  display:flex;align-items:center;justify-content:space-between;
 }}
-.title{{font-size:20px;font-weight:900;font-family:Inter;letter-spacing:-.3px}}
-.sub{{font-size:13px;color:var(--blue);margin:4px 0 14px;font-weight:600}}
-.live{{
+.card-title .badge{{
+  font-size:12px;font-weight:600;color:var(--blue);
+  background:rgba(59,130,246,.1);padding:3px 10px;border-radius:20px;
+}}
+
+/* ===== TOP STATUS CARD ===== */
+.status-row{{
   display:flex;justify-content:space-between;align-items:center;
-  padding:10px 14px;border-radius:14px;margin-bottom:14px;
-  background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.22);
-  font-size:12px;font-weight:700;color:var(--green);flex-wrap:wrap;gap:6px;
+  margin-bottom:16px;font-size:12px;font-weight:600;
 }}
-.dot{{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;margin-left:6px;
-  box-shadow:0 0 0 0 rgba(74,222,128,.5);animation:pulse 1.8s infinite}}
-@keyframes pulse{{0%{{box-shadow:0 0 0 0 rgba(74,222,128,.5)}}70%{{box-shadow:0 0 0 10px transparent}}100%{{box-shadow:0 0 0 0 transparent}}}}
-.ug{{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:center}}
-@media(max-width:400px){{.ug{{grid-template-columns:1fr 1fr}}.rw{{grid-column:1/-1;justify-self:center}}}}
-.st{{text-align:center}}
-.st .l{{font-size:11px;color:var(--muted);font-weight:600}}
-.st .v{{font-size:15px;font-weight:800;margin-top:2px}}
-.rw{{width:74px;height:74px;position:relative;display:flex;align-items:center;justify-content:center}}
-.ro{{position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(79,140,255,.25)}}
-.rg{{width:62px;height:62px;border-radius:50%;
-  background:conic-gradient(var(--blue) 0% 0%,rgba(30,41,59,.7) 0% 100%);
-  display:flex;align-items:center;justify-content:center;position:relative;transition:background 1s;
-  box-shadow:0 0 24px rgba(79,140,255,.35)}}
-.rg::before{{content:'';position:absolute;inset:7px;border-radius:50%;background:var(--bg)}}
-.rt{{position:relative;z-index:1;font-size:13px;font-weight:800}}
-.bar{{margin-top:14px;height:6px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden}}
-.bf{{height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--magenta));border-radius:99px;transition:width 1s;
-  box-shadow:0 0 12px rgba(79,140,255,.5)}}
-.h3{{font-size:12px;font-weight:700;color:var(--blue);opacity:.95;margin-bottom:12px;display:flex;align-items:center;gap:7px;letter-spacing:.4px}}
-.row{{
-  background:rgba(0,0,0,.18);padding:11px 13px;border-radius:14px;
-  display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;
-  font-size:11px;font-family:monospace;color:var(--muted);border:1px solid var(--glass-border);cursor:pointer;
-  transition:.2s;
+.status-online{{
+  display:flex;align-items:center;gap:6px;color:var(--green);
 }}
-.row:active{{transform:scale(.985)}}
-.row button{{
-  background:linear-gradient(135deg,var(--blue),#7c5cff);
-  border:none;color:#fff;padding:7px 14px;border-radius:10px;font-size:12px;font-weight:800;cursor:pointer;
-  font-family:inherit;box-shadow:0 4px 16px rgba(79,140,255,.4);transition:.2s;
+.dot{{
+  width:8px;height:8px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 0 0 rgba(34,197,94,.5);animation:pulse 1.8s infinite;
 }}
-.row button:active{{transform:scale(.95)}}
-.row .lt{{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
-.g3{{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;padding-top:12px;border-top:1px solid var(--glass-border)}}
-.ii{{background:rgba(0,0,0,.12);padding:10px 6px;border-radius:14px;text-align:center;border:1px solid var(--glass-border)}}
-.ii .l{{font-size:10px;opacity:.5;display:block;font-weight:600}}
-.ii .v{{font-size:13px;font-weight:800;margin-top:3px}}
-.cfg{{
-  background:rgba(0,0,0,.22);padding:12px;border-radius:14px;font-size:11px;font-family:monospace;
-  word-break:break-all;margin-bottom:12px;max-height:56px;overflow-y:auto;border:1px solid var(--glass-border);
-  direction:ltr;text-align:left;color:var(--muted);cursor:pointer;
+@keyframes pulse{{
+  0%{{box-shadow:0 0 0 0 rgba(34,197,94,.5)}}
+  70%{{box-shadow:0 0 0 8px transparent}}
+  100%{{box-shadow:0 0 0 0 transparent}}
+}}
+.stats-grid{{
+  display:grid;grid-template-columns:auto 1fr 1fr 1fr;gap:10px;align-items:center;
+}}
+@media(max-width:380px){{.stats-grid{{grid-template-columns:1fr 1fr;gap:12px}}
+.ring-wrap{{grid-column:1/-1;justify-self:center;margin-bottom:4px}}}}
+.stat{{text-align:center}}
+.stat .label{{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:2px}}
+.stat .value{{font-size:15px;font-weight:800}}
+.ring-wrap{{width:72px;height:72px;position:relative}}
+.ring{{
+  width:72px;height:72px;border-radius:50%;
+  background:conic-gradient(var(--blue) 0% 0%, #e2e8f0 0% 100%);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 20px rgba(59,130,246,.25);
+  transition:background 1s;
+}}
+html[data-theme="dark"] .ring{{background:conic-gradient(var(--blue) 0% 0%, #1e293b 0% 100%)}}
+.ring-inner{{
+  width:56px;height:56px;border-radius:50%;
+  background:var(--card);display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:800;
+}}
+.progress-bar{{
+  margin-top:14px;height:6px;background:rgba(148,163,184,.25);
+  border-radius:99px;overflow:hidden;
+}}
+.progress-fill{{
+  height:100%;width:0;border-radius:99px;
+  background:linear-gradient(90deg,var(--blue),var(--pink));
+  transition:width 1s;box-shadow:0 0 10px rgba(59,130,246,.4);
+}}
+
+/* ===== SUB LINK ===== */
+.sub-row{{
+  display:flex;align-items:center;gap:10px;
+  background:rgba(148,163,184,.08);border-radius:16px;
+  padding:8px 10px;margin-bottom:14px;
+}}
+.sub-url{{
+  flex:1;font-size:11px;font-family:monospace;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:left;
+}}
+.copy-btn{{
+  background:linear-gradient(135deg,var(--blue),var(--blue2));
+  color:#fff;border:none;padding:9px 16px;border-radius:12px;
+  font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;
+  box-shadow:var(--glow);white-space:nowrap;transition:.2s;
+}}
+.copy-btn:active{{transform:scale(.96)}}
+.info-pills{{
+  display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;
+}}
+.pill{{
+  background:rgba(148,163,184,.08);border-radius:14px;
+  padding:10px 6px;text-align:center;
+}}
+.pill .p-label{{font-size:10px;color:var(--muted);font-weight:600;margin-bottom:3px;display:flex;align-items:center;justify-content:center;gap:3px}}
+.pill .p-value{{font-size:13px;font-weight:800}}
+
+/* ===== CONFIG + QR ===== */
+.cfg-box{{
+  background:rgba(148,163,184,.08);border-radius:14px;
+  padding:12px;font-size:10px;font-family:monospace;
+  word-break:break-all;max-height:52px;overflow-y:auto;
+  direction:ltr;text-align:left;color:var(--muted);margin-bottom:14px;
+  cursor:pointer;position:relative;
+}}
+.cfg-box .copy-icon{{
+  position:absolute;top:8px;right:8px;font-size:14px;opacity:.5;
+}}
+.qr-wrap{{
+  display:flex;justify-content:center;margin-bottom:14px;
 }}
 .qr{{
-  width:120px;height:120px;background:#fff;border-radius:18px;margin:0 auto 12px;overflow:hidden;
-  border:2px solid rgba(79,140,255,.35);cursor:pointer;
-  box-shadow:0 0 30px rgba(79,140,255,.25),0 12px 30px rgba(0,0,0,.3);
+  width:130px;height:130px;background:#fff;border-radius:18px;
+  padding:8px;box-shadow:0 8px 30px rgba(59,130,246,.2);
+  border:2px solid rgba(99,102,241,.2);cursor:pointer;
 }}
-.qr img{{width:100%;height:100%}}
-.btns{{display:flex;gap:10px}}
-.btns button{{
-  flex:1;padding:13px;border:none;border-radius:14px;font-weight:800;font-size:13px;cursor:pointer;
-  font-family:inherit;transition:.2s;
+.qr img{{width:100%;height:100%;border-radius:10px}}
+.action-btns{{display:flex;gap:10px}}
+.action-btns button{{
+  flex:1;padding:13px;border:none;border-radius:14px;
+  font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;transition:.2s;
 }}
-.b1{{
-  background:linear-gradient(135deg,var(--blue),#7c5cff);color:#fff;
-  box-shadow:0 8px 24px rgba(79,140,255,.45);
+.btn-share{{
+  background:rgba(148,163,184,.12);color:var(--text);
+  border:1px solid rgba(148,163,184,.2);
 }}
-.b2{{
-  background:rgba(255,77,158,.12);color:var(--magenta);
-  border:1px solid rgba(255,77,158,.3);
+.btn-add{{
+  background:linear-gradient(135deg,var(--blue),var(--pink));
+  color:#fff;box-shadow:0 8px 24px rgba(236,72,153,.35);
 }}
-.b1:active,.b2:active{{transform:scale(.97)}}
-.apps{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}}
-@media(max-width:400px){{.apps{{grid-template-columns:repeat(3,1fr)}}}}
-.app{{
-  background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:18px;
-  padding:14px 6px 12px;text-align:center;cursor:pointer;position:relative;transition:.25s;
+.action-btns button:active{{transform:scale(.97)}}
+
+/* ===== QUICK TOOLS ===== */
+.plat-row{{
+  display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;
 }}
-.app:active{{transform:scale(.96)}}
-.app-photo{{
-  width:56px;height:56px;margin:0 auto 8px;border-radius:16px;overflow:hidden;
-  box-shadow:0 8px 24px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(145deg,#1a1a2e,#2a2a4a);transition:transform .25s;
-}}
-.app:hover .app-photo{{transform:scale(1.06)}}
-.app-photo img{{width:100%;height:100%;object-fit:cover;display:block}}
-.app-name{{font-size:11px;font-weight:700;color:var(--text)}}
-.badge{{position:absolute;top:8px;right:8px;font-size:10px;background:rgba(79,140,255,.25);color:var(--blue);padding:2px 6px;border-radius:8px;font-weight:800}}
-.download-badge{{position:absolute;bottom:6px;right:50%;transform:translateX(50%);font-size:9px;background:rgba(74,222,128,.15);color:var(--green);padding:2px 7px;border-radius:6px;font-weight:700;white-space:nowrap}}
-.plat{{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:10px;margin-bottom:12px;scrollbar-width:none}}
-.plat::-webkit-scrollbar{{display:none}}
 .plat-btn{{
-  flex-shrink:0;padding:8px 16px;border-radius:99px;border:1px solid var(--glass-border);
-  background:rgba(255,255,255,.04);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;
-  font-family:inherit;transition:.25s;
+  padding:8px 14px;border-radius:20px;border:1px solid rgba(148,163,184,.2);
+  background:rgba(148,163,184,.08);color:var(--muted);
+  font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:.2s;
 }}
 .plat-btn.on{{
-  background:linear-gradient(135deg,var(--blue),#7c5cff);color:#fff;border-color:transparent;
-  box-shadow:0 6px 20px rgba(79,140,255,.4);
+  background:linear-gradient(135deg,var(--blue),var(--blue2));
+  color:#fff;border-color:transparent;box-shadow:0 4px 16px rgba(59,130,246,.35);
 }}
-footer{{text-align:center;font-size:12px;color:var(--muted);margin-top:10px;padding-top:14px;border-top:1px solid var(--glass-border)}}
-footer b{{background:linear-gradient(135deg,var(--blue),var(--magenta));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
+.apps-grid{{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:10px;
+}}
+@media(max-width:380px){{.apps-grid{{grid-template-columns:repeat(3,1fr)}}}}
+.app-card{{
+  background:rgba(148,163,184,.06);border:1px solid rgba(148,163,184,.12);
+  border-radius:18px;padding:14px 6px 10px;text-align:center;
+  cursor:pointer;transition:.2s;position:relative;
+}}
+.app-card:active{{transform:scale(.96)}}
+.app-icon{{
+  width:48px;height:48px;margin:0 auto 8px;border-radius:14px;
+  background:linear-gradient(145deg,#e0e7ff,#fce7f3);
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.08);
+}}
+html[data-theme="dark"] .app-icon{{background:linear-gradient(145deg,#1e293b,#312e81)}}
+.app-icon img{{width:100%;height:100%;object-fit:cover}}
+.app-name{{font-size:11px;font-weight:700}}
+.app-hint{{font-size:9px;color:var(--muted);margin-top:2px}}
+
+/* ===== FOOTER ===== */
+.footer{{
+  text-align:center;font-size:11px;color:var(--muted);
+  margin-top:8px;padding-top:12px;
+}}
+.footer b{{
+  background:linear-gradient(135deg,var(--blue),var(--pink));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}}
+
+/* ===== TOAST ===== */
 .toast{{
   position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px);
-  background:var(--glass);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
-  padding:12px 22px;border-radius:14px;font-size:13px;color:var(--blue);opacity:0;transition:.35s;
-  border:1px solid var(--glass-border);z-index:9999;font-weight:700;box-shadow:var(--shadow);
+  background:var(--card);backdrop-filter:blur(20px);
+  padding:12px 22px;border-radius:14px;font-size:13px;font-weight:700;
+  color:var(--blue);opacity:0;transition:.35s;border:1px solid var(--card-border);
+  z-index:9999;box-shadow:var(--shadow);
 }}
 .toast.show{{opacity:1;transform:translateX(-50%) translateY(0)}}
-</style></head><body>
-<div class="w">
-<div class="top">
-  <div class="logo">🚀 VROOM</div>
-  <button class="theme-btn" onclick="document.documentElement.setAttribute('data-theme',document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark')">🌓</button>
-</div>
 
-<div class="card">
-  <div class="title">Subscription</div>
-  <div class="sub">✦ {link['label']} ✦</div>
-  <div class="live"><span><span class="dot"></span>Server Online</span><span style="color:var(--muted)">Connections: <b style="color:var(--text)">{live_conns}</b></span></div>
-  <div class="ug">
-    <div class="st"><div class="l">Used</div><div class="v">{used_gb} GB</div></div>
-    <div class="st"><div class="l">Status</div><div class="v" style="color:{sc};font-size:13px">{status_fa}</div></div>
-    <div class="st"><div class="l">Left</div><div class="v">{remaining}{' GB' if remaining!='∞' else ''}</div></div>
-    <div class="rw"><div class="ro"></div><div class="rg" id="rg"><div class="rt" id="pct">0%</div></div></div>
+/* QR Modal */
+#qrm{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);align-items:center;justify-content:center;z-index:10000;backdrop-filter:blur(8px)}}
+#qrm img{{width:min(80vw,300px);border-radius:20px;box-shadow:0 0 60px rgba(59,130,246,.4)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-left">
+      <button class="icon-btn" id="themeBtn" onclick="toggleTheme()">☀️</button>
+      <div class="lang-switch">
+        <button id="btnEn" onclick="setLang('en')">EN</button>
+        <button id="btnFa" class="on" onclick="setLang('fa')">FA</button>
+      </div>
+    </div>
+    <div class="logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="url(#g)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="g" x1="2" y1="2" x2="22" y2="22"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#ec4899"/></linearGradient></defs></svg>
+      VROOM
+    </div>
+    <button class="icon-btn">⚡</button>
   </div>
-  <div class="bar"><div class="bf" id="bf"></div></div>
-</div>
 
-<div class="card">
-  <div class="h3">📋 Sub Link (for apps)</div>
-  <div class="row" onclick="cp(SUB)"><span class="lt">{sub_url}</span><button onclick="event.stopPropagation();cp(SUB)">Copy</button></div>
-  <div class="g3">
-    <div class="ii"><span class="l">Status</span><span class="v" style="color:{sc}">{status_fa}</span></div>
-    <div class="ii"><span class="l">Expiry</span><span class="v" style="color:#fbbf24">{exp_disp}</span></div>
-    <div class="ii"><span class="l">Days Left</span><span class="v" style="color:#67e8f9">{days_fa}</span></div>
+  <!-- STATUS CARD -->
+  <div class="card">
+    <div class="card-title">
+      <span data-fa="Subscription /" data-en="Subscription /">Subscription /</span>
+      <span class="badge">✨ {link['label']} ✨</span>
+    </div>
+    <div class="status-row">
+      <span data-fa="اتصالات : {live_conns}" data-en="Connections : {live_conns}">اتصالات : {live_conns}</span>
+      <span class="status-online"><span class="dot"></span> <span data-fa="سرور آنلاین" data-en="Server Online">سرور آنلاین</span></span>
+    </div>
+    <div class="stats-grid">
+      <div class="ring-wrap">
+        <div class="ring" id="ring"><div class="ring-inner" id="pct">0%</div></div>
+      </div>
+      <div class="stat">
+        <div class="label" data-fa="باقی" data-en="Left">باقی</div>
+        <div class="value">{remaining}{' GB' if remaining != '∞' else ''}</div>
+      </div>
+      <div class="stat">
+        <div class="label" data-fa="وضعیت" data-en="Status">وضعیت</div>
+        <div class="value" style="color:{sc};font-size:13px" data-fa="{status_fa}" data-en="{status_en}">{status_fa}</div>
+      </div>
+      <div class="stat">
+        <div class="label" data-fa="مصرف" data-en="Used">مصرف</div>
+        <div class="value">{used_gb} GB</div>
+      </div>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="bar"></div></div>
   </div>
-</div>
 
-<div class="card">
-  <div class="h3">📦 Config & QR</div>
-  <div class="cfg" onclick="cp(CFG)">{server_link}</div>
-  <div style="text-align:center">
-    <div class="qr" onclick="document.getElementById('qrm').style.display='flex'"><img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={qr_data}" alt="QR"/></div>
-    <div class="btns"><button class="b1" onclick="cp(SUB)">＋ Add Sub</button><button class="b2" onclick="shareApp()">Share</button></div>
+  <!-- SUB LINK CARD -->
+  <div class="card">
+    <div class="card-title">
+      <span data-fa="لینک ساب (دریافت‌ها)" data-en="Sub Link (for apps)">لینک ساب (دریافت‌ها)</span>
+      <span style="font-size:16px">🔗</span>
+    </div>
+    <div class="sub-row">
+      <button class="copy-btn" onclick="cp(SUB)" data-fa="کپی" data-en="Copy">کپی</button>
+      <div class="sub-url">{sub_url}</div>
+    </div>
+    <div class="info-pills">
+      <div class="pill">
+        <div class="p-label">🛡️ <span data-fa="وضعیت" data-en="Status">وضعیت</span></div>
+        <div class="p-value" style="color:{sc}" data-fa="{status_fa}" data-en="{status_en}">{status_fa}</div>
+      </div>
+      <div class="pill">
+        <div class="p-label">📅 <span data-fa="انقضا" data-en="Expiry">انقضا</span></div>
+        <div class="p-value" style="color:#f59e0b">{exp_disp}</div>
+      </div>
+      <div class="pill">
+        <div class="p-label">⏳ <span data-fa="باقی" data-en="Left">باقی</span></div>
+        <div class="p-value" style="color:#06b6d4" data-fa="{days_fa} روز" data-en="{days_en} days">{days_fa} روز</div>
+      </div>
+    </div>
   </div>
-</div>
 
-<div class="card">
-  <div class="h3">📱 Easy Import</div>
-  <div class="plat" id="platBar">
-    <button class="plat-btn on" data-p="android" onclick="showPlat('android',this)">Android</button>
-    <button class="plat-btn" data-p="ios" onclick="showPlat('ios',this)">iOS</button>
-    <button class="plat-btn" data-p="windows" onclick="showPlat('windows',this)">Windows</button>
-    <button class="plat-btn" data-p="macos" onclick="showPlat('macos',this)">macOS</button>
-    <button class="plat-btn" data-p="linux" onclick="showPlat('linux',this)">Linux</button>
+  <!-- CONFIG + QR -->
+  <div class="card">
+    <div class="card-title">
+      <span data-fa="کانفیگ و QR" data-en="Config & QR">کانفیگ و QR</span>
+      <span style="font-size:16px">📱</span>
+    </div>
+    <div class="cfg-box" onclick="cp(CFG)">
+      {server_link}
+      <span class="copy-icon">📋</span>
+    </div>
+    <div class="qr-wrap">
+      <div class="qr" onclick="document.getElementById('qrm').style.display='flex'">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={qr_data}" alt="QR"/>
+      </div>
+    </div>
+    <div class="action-btns">
+      <button class="btn-share" onclick="shareApp()" data-fa="اشتراک" data-en="Share">اشتراک</button>
+      <button class="btn-add" onclick="cp(SUB)" data-fa="+ اضافه اشتراک +" data-en="+ Add Sub +">+ اضافه اشتراک +</button>
+    </div>
   </div>
-  <div class="apps" id="appsGrid"></div>
+
+  <!-- QUICK TOOLS -->
+  <div class="card">
+    <div class="card-title">
+      <span data-fa="ابزارهای سریع" data-en="Quick Tools">ابزارهای سریع</span>
+      <span style="font-size:16px">⚡</span>
+    </div>
+    <div class="plat-row" id="platBar">
+      <button class="plat-btn on" data-p="android" onclick="showPlat('android',this)">Android</button>
+      <button class="plat-btn" data-p="ios" onclick="showPlat('ios',this)">iOS</button>
+      <button class="plat-btn" data-p="windows" onclick="showPlat('windows',this)">Windows</button>
+      <button class="plat-btn" data-p="macos" onclick="showPlat('macos',this)">macOS</button>
+      <button class="plat-btn" data-p="linux" onclick="showPlat('linux',this)">Linux</button>
+    </div>
+    <div class="apps-grid" id="appsGrid"></div>
+  </div>
+
+  <div class="footer">Powered by <b>VROOM</b></div>
 </div>
 
-<footer>Powered by <b>VROOM 🚀</b></footer>
-</div>
-
-<div id="qrm" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);align-items:center;justify-content:center;z-index:10000;backdrop-filter:blur(8px)" onclick="this.style.display='none'">
-  <img style="width:min(80vw,300px);border-radius:20px;border:2px solid rgba(79,140,255,.5);box-shadow:0 0 60px rgba(79,140,255,.4)" src="https://api.qrserver.com/v1/create-qr-code/?size=360x360&data={qr_data}" alt="QR"/>
+<div id="qrm" onclick="this.style.display='none'">
+  <img src="https://api.qrserver.com/v1/create-qr-code/?size=360x360&data={qr_data}" alt="QR"/>
 </div>
 <div class="toast" id="toast"></div>
 
 <script>
-const SUB='{sub_url}', CFG=`{server_link}`, P={percent};
+const SUB = '{sub_url}';
+const CFG = `{server_link}`;
+const P = {percent};
+let LANG = localStorage.getItem('vroom_lang') || 'fa';
 
 const CATALOG = {{
-    android: [
-        {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
-        {{id:'v2rayng',name:'v2rayNG',scheme:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},
-        {{id:'v2box',name:'V2Box',scheme:'v2box://install-config?url='+encodeURIComponent(SUB)}},
-        {{id:'NPV Tunnel',name:'NPV Tunnel',scheme:'npv://import?url='+encodeURIComponent(SUB)}}
-    ],
-    ios: [
-        {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
-        {{id:'v2box',name:'V2Box',scheme:'v2box://install-config?url='+encodeURIComponent(SUB)}},
-        {{id:'NPV Tunnel',name:'NPV Tunnel',scheme:'npv://import?url='+encodeURIComponent(SUB)}},
-        {{id:'Happ',name:'Happ',scheme:'happ://import?url='+encodeURIComponent(SUB)}}
-    ],
-    windows: [
-        {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
-        {{id:'v2rayn',name:'v2rayN',scheme:'v2rayN://import?url='+encodeURIComponent(SUB)}}
-    ],
-    macos: [
-        {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
-        {{id:'v2box',name:'V2Box',scheme:'v2box://install-config?url='+encodeURIComponent(SUB)}},
-        {{id:'NPV Tunnel',name:'NPV Tunnel',scheme:'npv://import?url='+encodeURIComponent(SUB)}}
-    ],
-    linux: [
-        {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
-        {{id:'v2rayn',name:'v2rayN',scheme:'v2rayN://import?url='+encodeURIComponent(SUB)}}
-    ]
+  android: [
+    {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayng',name:'v2rayNG',scheme:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'v2box',name:'V2Box',scheme:'v2box://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'Happ',name:'Happ',scheme:'happ://import?url='+encodeURIComponent(SUB)}}
+  ],
+  ios: [
+    {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2box',name:'V2Box',scheme:'v2box://install-config?url='+encodeURIComponent(SUB)}},
+    {{id:'Happ',name:'Happ',scheme:'happ://import?url='+encodeURIComponent(SUB)}}
+  ],
+  windows: [
+    {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayn',name:'v2rayN',scheme:'v2rayN://import?url='+encodeURIComponent(SUB)}}
+  ],
+  macos: [
+    {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2box',name:'V2Box',scheme:'v2box://install-config?url='+encodeURIComponent(SUB)}}
+  ],
+  linux: [
+    {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
+    {{id:'v2rayn',name:'v2rayN',scheme:'v2rayN://import?url='+encodeURIComponent(SUB)}}
+  ]
 }};
 
+function setLang(l) {{
+  LANG = l;
+  localStorage.setItem('vroom_lang', l);
+  document.documentElement.lang = l;
+  document.documentElement.dir = l === 'fa' ? 'rtl' : 'ltr';
+  document.getElementById('btnFa').classList.toggle('on', l === 'fa');
+  document.getElementById('btnEn').classList.toggle('on', l === 'en');
+  document.querySelectorAll('[data-fa]').forEach(el => {{
+    el.textContent = l === 'fa' ? el.dataset.fa : el.dataset.en;
+  }});
+}}
+
+function toggleTheme() {{
+  const cur = document.documentElement.getAttribute('data-theme');
+  const next = cur === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('vroom_theme', next);
+  document.getElementById('themeBtn').textContent = next === 'light' ? '☀️' : '🌙';
+}}
+
 async function getAppPhoto(appId) {{
-    try {{
-        const r = await fetch(`/api/app-photo/${{appId}}`);
-        if (r.ok) {{
-            const d = await r.json();
-            return {{url: d.url, download: d.download, name: d.name}};
-        }}
-    }} catch(e) {{}}
-    return {{url: null, download: null, name: appId}};
+  try {{
+    const r = await fetch(`/api/app-photo/${{appId}}`);
+    if (r.ok) {{
+      const d = await r.json();
+      return {{url: d.url, name: d.name}};
+    }}
+  }} catch(e) {{}}
+  return {{url: null, name: appId}};
 }}
 
 async function showPlat(p, btn) {{
-    document.querySelectorAll('.plat-btn').forEach(b => b.classList.remove('on'));
-    if (btn) btn.classList.add('on');
-    const list = CATALOG[p] || [];
-    const grid = document.getElementById('appsGrid');
-    grid.innerHTML = list.map(a => `
-        <div class="app" onclick="openApp('${{a.id}}','${{p}}')" id="app-${{a.id}}">
-            <span class="badge">＋</span>
-            <div class="app-photo">
-                <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:700;">⬇️</div>
-            </div>
-            <div class="app-name">${{a.name}}</div>
-            <span class="download-badge">📥 دانلود</span>
-        </div>
-    `).join('');
-    for (const a of list) {{
-        const data = await getAppPhoto(a.id);
-        const photoDiv = document.querySelector(`#app-${{a.id}} .app-photo`);
-        if (photoDiv) {{
-            if (data.url) {{
-                photoDiv.innerHTML = `<img src="${{data.url}}" alt="${{a.name}}" 
-                    onerror="this.parentElement.innerHTML='<div style=\\'width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:16px;font-weight:700;\\'>${{a.name[0]}}</div>'" 
-                    style="width:100%;height:100%;object-fit:cover;display:block;border-radius:14px;"/>`;
-            }} else {{
-                photoDiv.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:white;font-size:16px;font-weight:700;">${{a.name[0]}}</div>`;
-            }}
-        }}
+  document.querySelectorAll('.plat-btn').forEach(b => b.classList.remove('on'));
+  if (btn) btn.classList.add('on');
+  const list = CATALOG[p] || [];
+  const grid = document.getElementById('appsGrid');
+  grid.innerHTML = list.map(a => `
+    <div class="app-card" onclick="openApp('${{a.id}}','${{p}}')" id="app-${{a.id}}">
+      <div class="app-icon"><span style="font-size:18px">⬇️</span></div>
+      <div class="app-name">${{a.name}}</div>
+      <div class="app-hint">Tap to open</div>
+    </div>
+  `).join('');
+  for (const a of list) {{
+    const data = await getAppPhoto(a.id);
+    const icon = document.querySelector(`#app-${{a.id}} .app-icon`);
+    if (icon && data.url) {{
+      icon.innerHTML = `<img src="${{data.url}}" alt="${{a.name}}" onerror="this.parentElement.innerHTML='${{a.name[0]}}'"/>`;
+    }} else if (icon) {{
+      icon.innerHTML = `<span style="font-weight:800;font-size:18px">${{a.name[0]}}</span>`;
     }}
+  }}
 }}
 
 function openApp(id, plat) {{
-    const a = (CATALOG[plat] || []).find(x => x.id === id);
-    if (!a) return;
-    if (a.scheme) {{ try {{ location.href = a.scheme; }} catch(e) {{}} }}
-    setTimeout(() => {{ cp(SUB); toast('لینک ساب کپی شد'); }}, 1500);
+  const a = (CATALOG[plat] || []).find(x => x.id === id);
+  if (!a) return;
+  if (a.scheme) {{ try {{ location.href = a.scheme; }} catch(e) {{}} }}
+  setTimeout(() => {{ cp(SUB); toast(LANG==='fa'?'لینک ساب کپی شد':'Sub link copied'); }}, 1400);
 }}
 
 function shareApp() {{
-    if (navigator.share) {{
-        navigator.share({{ title: 'VROOM', url: SUB }}).catch(() => cp(SUB));
-    }} else {{ cp(SUB); }}
+  if (navigator.share) {{
+    navigator.share({{title:'VROOM', url:SUB}}).catch(() => cp(SUB));
+  }} else {{
+    cp(SUB);
+  }}
 }}
 
 function cp(t) {{
-    if (navigator.clipboard) {{
-        navigator.clipboard.writeText(t).then(() => toast('کپی شد ✅'));
-    }} else {{
-        const i = document.createElement('input'); i.value = t; document.body.appendChild(i); i.select();
-        document.execCommand('copy'); document.body.removeChild(i); toast('کپی شد ✅');
-    }}
+  if (navigator.clipboard) {{
+    navigator.clipboard.writeText(t).then(() => toast(LANG==='fa'?'کپی شد ✅':'Copied ✅'));
+  }} else {{
+    const i = document.createElement('input'); i.value = t;
+    document.body.appendChild(i); i.select(); document.execCommand('copy');
+    document.body.removeChild(i); toast(LANG==='fa'?'کپی شد ✅':'Copied ✅');
+  }}
 }}
 
 function toast(m) {{
-    const t = document.getElementById('toast');
-    t.textContent = m; t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 2400);
+  const t = document.getElementById('toast');
+  t.textContent = m; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2300);
 }}
 
+// init
+const savedTheme = localStorage.getItem('vroom_theme') || 'light';
+document.documentElement.setAttribute('data-theme', savedTheme);
+document.getElementById('themeBtn').textContent = savedTheme === 'light' ? '☀️' : '🌙';
+setLang(LANG);
 showPlat('android', document.querySelector('.plat-btn'));
 setTimeout(() => {{
-    document.getElementById('rg').style.background = `conic-gradient(#4f8cff 0% ${{P}}%,rgba(30,41,59,.7) ${{P}}% 100%)`;
-    document.getElementById('bf').style.width = P + '%';
-    document.getElementById('pct').textContent = P + '%';
-}}, 250);
-</script></body></html>"""
+  document.getElementById('ring').style.background = `conic-gradient(#3b82f6 0% ${{P}}%, ${{savedTheme==='dark'?'#1e293b':'#e2e8f0'}} ${{P}}% 100%)`;
+  document.getElementById('bar').style.width = P + '%';
+  document.getElementById('pct').textContent = P + '%';
+}}, 200);
+</script>
+</body>
+</html>"""
     return HTMLResponse(content=html)
 
 # ================================================================
@@ -1285,12 +1421,12 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
             await writer.drain()
         t1 = asyncio.create_task(ws_to_tcp(websocket, writer, conn_id, uuid))
         t2 = asyncio.create_task(tcp_to_ws(websocket, reader, conn_id, uuid))
-        done, pending = await asyncio.wait({t1, t2}, return_when=asyncio.FIRST_COMPLETED)
+        done, pending = await asyncio.wait({{t1, t2}}, return_when=asyncio.FIRST_COMPLETED)
         for t in pending:
             t.cancel()
     except Exception as e:
         stats["total_errors"] += 1
-        error_logs.append({"error": str(e), "time": datetime.now().isoformat()})
+        error_logs.append({{"error": str(e), "time": datetime.now().isoformat()}})
     finally:
         if writer:
             try:
@@ -1306,26 +1442,22 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
                     remove_ip_from_link(uid, ip)
 
 # ================================================================
-# ========== LOGIN & DASHBOARD  (same Crystal style) ==========
+# ========== LOGIN & DASHBOARD ==========
 # ================================================================
 LOGIN_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VROOM</title>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@700;900&family=Inter:wght@800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#07071a;--glass:rgba(255,255,255,.07);--border:rgba(255,255,255,.12);--text:#f0f2ff;--blue:#4f8cff;--mag:#ff4d9e}
+:root{--bg:#eef2ff;--card:rgba(255,255,255,.85);--border:rgba(255,255,255,.9);--text:#1e293b;--blue:#3b82f6;--pink:#ec4899}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:Vazirmatn,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);direction:rtl;
-background-image:radial-gradient(ellipse 80% 50% at 15% 0%,rgba(79,140,255,.28),transparent 55%),radial-gradient(ellipse 70% 45% at 90% 20%,rgba(255,77,158,.2),transparent 50%)}
-.card{background:var(--glass);border:1px solid var(--border);border-radius:28px;padding:42px 34px;width:100%;max-width:380px;
-backdrop-filter:blur(32px);-webkit-backdrop-filter:blur(32px);box-shadow:0 25px 60px -15px rgba(0,0,0,.6);position:relative;overflow:hidden}
-.card::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(135deg,rgba(255,255,255,.1),transparent 45%)}
-h1{font-size:30px;font-weight:900;text-align:center;font-family:Inter;
-background:linear-gradient(135deg,var(--blue),var(--mag));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:28px}
-input{width:100%;padding:14px 16px;background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:14px;color:#fff;font-size:15px;font-family:inherit;outline:none;margin-bottom:14px;transition:.2s}
-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(79,140,255,.2)}
-.btn{width:100%;padding:15px;background:linear-gradient(135deg,var(--blue),#7c5cff);border:none;border-radius:14px;color:#fff;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;
-box-shadow:0 10px 30px rgba(79,140,255,.45);transition:.2s}
-.btn:active{transform:scale(.98)}
-.err{color:#ff6b9d;font-size:13px;text-align:center;display:none;margin-bottom:12px}.err.show{display:block}
+background-image:radial-gradient(ellipse 80% 50% at 15% 0%,rgba(99,102,241,.2),transparent 55%),radial-gradient(ellipse 70% 45% at 90% 20%,rgba(236,72,153,.15),transparent 50%)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:28px;padding:42px 34px;width:100%;max-width:380px;
+backdrop-filter:blur(24px);box-shadow:0 20px 50px -12px rgba(99,102,241,.2)}
+h1{font-size:30px;font-weight:900;text-align:center;font-family:Inter;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:28px}
+input{width:100%;padding:14px 16px;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.2);border-radius:14px;color:var(--text);font-size:15px;font-family:inherit;outline:none;margin-bottom:14px}
+input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+.btn{width:100%;padding:15px;background:linear-gradient(135deg,var(--blue),#6366f1);border:none;border-radius:14px;color:#fff;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 8px 24px rgba(59,130,246,.35)}
+.err{color:#ec4899;font-size:13px;text-align:center;display:none;margin-bottom:12px}.err.show{display:block}
 </style></head><body>
 <div class="card"><h1>VROOM</h1><div class="err" id="err"></div>
 <form id="f"><input type="password" id="pw" placeholder="رمز عبور / Password" autofocus><button class="btn" type="submit">ورود / Login</button></form></div>
@@ -1337,53 +1469,43 @@ DASHBOARD_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>VROOM Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700;800;900&family=Inter:wght@800&display=swap" rel="stylesheet">
 <style>
-:root{
-  --bg:#07071a;--glass:rgba(255,255,255,.06);--border:rgba(255,255,255,.1);
-  --text:#f0f2ff;--muted:rgba(240,242,255,.5);--blue:#4f8cff;--mag:#ff4d9e;--green:#4ade80;--red:#ff6b9d;
-  --radius:18px;--shadow:0 16px 40px -10px rgba(0,0,0,.5);
-}
+:root{--bg:#eef2ff;--card:rgba(255,255,255,.82);--border:rgba(255,255,255,.9);--text:#1e293b;--muted:#64748b;--blue:#3b82f6;--pink:#ec4899;--green:#22c55e;--red:#ec4899;--radius:18px;--shadow:0 10px 30px -8px rgba(99,102,241,.15)}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:Vazirmatn,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;direction:rtl;
-background-image:radial-gradient(ellipse 70% 40% at 10% 0%,rgba(79,140,255,.18),transparent 50%),radial-gradient(ellipse 50% 30% at 90% 5%,rgba(255,77,158,.12),transparent 45%)}
-.side{width:200px;background:rgba(10,10,20,.85);border-left:1px solid var(--border);position:fixed;right:0;top:0;bottom:0;padding:16px 10px;display:flex;flex-direction:column;z-index:40;
-backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px)}
-.brand{font-size:18px;font-weight:900;background:linear-gradient(135deg,var(--blue),var(--mag));-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter;padding:8px;margin-bottom:14px}
+background-image:radial-gradient(ellipse 70% 40% at 10% 0%,rgba(99,102,241,.15),transparent 50%),radial-gradient(ellipse 50% 30% at 90% 5%,rgba(236,72,153,.1),transparent 45%)}
+.side{width:200px;background:rgba(255,255,255,.7);border-left:1px solid rgba(148,163,184,.15);position:fixed;right:0;top:0;bottom:0;padding:16px 10px;display:flex;flex-direction:column;z-index:40;backdrop-filter:blur(20px)}
+.brand{font-size:18px;font-weight:900;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter;padding:8px;margin-bottom:14px}
 .ni{padding:10px 12px;border-radius:12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;margin-bottom:3px;border:none;background:none;width:100%;text-align:right;font-family:inherit;transition:.2s}
-.ni:hover,.ni.on{background:rgba(79,140,255,.12);color:var(--blue)}
+.ni:hover,.ni.on{background:rgba(59,130,246,.1);color:var(--blue)}
 .main{margin-right:200px;padding:20px 16px}
 .page{display:none}.page.on{display:block}
-.pt{font-size:18px;font-weight:900;margin-bottom:16px;background:linear-gradient(135deg,var(--blue),var(--mag));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.pt{font-size:18px;font-weight:900;margin-bottom:16px;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
-.st{background:var(--glass);border:1px solid var(--border);border-radius:var(--radius);padding:14px;backdrop-filter:blur(20px);box-shadow:var(--shadow)}
+.st{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;backdrop-filter:blur(16px);box-shadow:var(--shadow)}
 .st .l{font-size:10px;color:var(--muted);font-weight:600}.st .v{font-size:17px;font-weight:800;margin-top:4px}
-.card{background:var(--glass);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;backdrop-filter:blur(20px);box-shadow:var(--shadow)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;backdrop-filter:blur(16px);box-shadow:var(--shadow)}
 .card h3{font-size:12px;color:var(--blue);margin-bottom:10px;font-weight:700}
 .btn{padding:8px 14px;border-radius:11px;border:none;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;transition:.2s}
-.bg{background:linear-gradient(135deg,var(--blue),#7c5cff);color:#fff;box-shadow:0 6px 18px rgba(79,140,255,.4)}
-.bo{background:rgba(79,140,255,.1);color:var(--blue);border:1px solid rgba(79,140,255,.25)}
-.bd{background:rgba(255,107,157,.12);color:var(--red)}
-.btn:active{transform:scale(.96)}
-input,select{width:100%;padding:10px 12px;background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:11px;color:var(--text);font-family:inherit;font-size:13px;outline:none;margin-bottom:8px}
-input:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(79,140,255,.15)}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th{text-align:right;padding:8px;color:var(--muted);border-bottom:1px solid var(--border);font-size:10px}
-td{padding:8px;border-bottom:1px solid rgba(255,255,255,.04)}
-.tag{display:inline-block;padding:3px 8px;border-radius:8px;font-size:10px;font-weight:700}
-.ton{background:rgba(74,222,128,.15);color:var(--green)}.toff{background:rgba(255,107,157,.12);color:var(--red)}
-.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(50px);background:var(--glass);border:1px solid var(--border);padding:10px 18px;border-radius:12px;font-size:13px;color:var(--blue);opacity:0;transition:.3s;z-index:999;backdrop-filter:blur(16px);font-weight:700}
+.bg{background:linear-gradient(135deg,var(--blue),#6366f1);color:#fff;box-shadow:0 6px 18px rgba(59,130,246,.3)}
+.bo{background:rgba(59,130,246,.1);color:var(--blue);border:1px solid rgba(59,130,246,.2)}
+.bd{background:rgba(236,72,153,.1);color:var(--red)}
+input,select{width:100%;padding:10px 12px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);border-radius:11px;color:var(--text);font-family:inherit;font-size:13px;outline:none;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:right;padding:8px;color:var(--muted);border-bottom:1px solid rgba(148,163,184,.15);font-size:10px}td{padding:8px;border-bottom:1px solid rgba(148,163,184,.08)}
+.tag{display:inline-block;padding:3px 8px;border-radius:8px;font-size:10px;font-weight:700}.ton{background:rgba(34,197,94,.12);color:var(--green)}.toff{background:rgba(236,72,153,.1);color:var(--red)}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(50px);background:var(--card);border:1px solid var(--border);padding:10px 18px;border-radius:12px;font-size:13px;color:var(--blue);opacity:0;transition:.3s;z-index:999;backdrop-filter:blur(16px);font-weight:700}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-.mob{display:none;position:fixed;top:0;left:0;right:0;height:48px;background:rgba(10,10,20,.9);border-bottom:1px solid var(--border);z-index:50;align-items:center;justify-content:space-between;padding:0 14px;backdrop-filter:blur(20px)}
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:80;display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px)}.modal-bg.show{display:flex}
-.modal{background:rgba(18,18,36,.95);border:1px solid var(--border);border-radius:20px;padding:20px;width:92%;max-width:380px;backdrop-filter:blur(24px)}
+.mob{display:none;position:fixed;top:0;left:0;right:0;height:48px;background:rgba(255,255,255,.85);border-bottom:1px solid rgba(148,163,184,.15);z-index:50;align-items:center;justify-content:space-between;padding:0 14px;backdrop-filter:blur(16px)}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:80;display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px)}.modal-bg.show{display:flex}
+.modal{background:rgba(255,255,255,.95);border:1px solid var(--border);border-radius:20px;padding:20px;width:92%;max-width:380px;backdrop-filter:blur(20px)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .pulse{display:inline-block;width:8px;height:8px;background:var(--green);border-radius:50%;animation:p 1.6s infinite;margin:0 4px}
-@keyframes p{0%{box-shadow:0 0 0 0 rgba(74,222,128,.5)}70%{box-shadow:0 0 0 8px transparent}}
-.lang{display:inline-flex;border:1px solid var(--border);border-radius:14px;overflow:hidden;font-size:11px;font-weight:700;margin-bottom:10px}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}70%{box-shadow:0 0 0 8px transparent}}
+.lang{display:inline-flex;border:1px solid rgba(148,163,184,.2);border-radius:14px;overflow:hidden;font-size:11px;font-weight:700;margin-bottom:10px}
 .lang button{border:none;padding:5px 11px;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;font-weight:700}
-.lang button.on{background:linear-gradient(135deg,var(--blue),#7c5cff);color:#fff}
+.lang button.on{background:linear-gradient(135deg,var(--blue),#6366f1);color:#fff}
 @media(max-width:768px){.side{transform:translateX(100%)}.side.open{transform:translateX(0)}.main{margin-right:0;padding-top:60px}.stats{grid-template-columns:1fr 1fr}.mob{display:flex}}
 </style></head><body>
-<div class="mob"><span style="font-weight:900;background:linear-gradient(135deg,#4f8cff,#ff4d9e);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter">VROOM</span>
+<div class="mob"><span style="font-weight:900;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter">VROOM</span>
 <button class="btn bo" onclick="document.querySelector('.side').classList.toggle('open')">☰</button></div>
 <aside class="side">
 <div class="brand">VROOM</div>
@@ -1492,7 +1614,7 @@ const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'applica
 if(!r.ok){toast((await r.json().catch(()=>({}))).detail||'خطا');return}toast('ساخته شد');$('#addM').classList.remove('show');loadL();loadS()}
 async function qc(gb){const n='u'+Math.floor(Math.random()*900+100);await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:n,limit_value:gb,limit_unit:'GB',expiry_days:30})});toast(n);loadS()}
 async function resetAll(){if(!confirm('ریست همه؟'))return;await fetch('/api/reset-all-usage',{method:'POST'});toast('ریست');loadL()}
-async function loadA(){const r=await fetch('/api/addresses');const d=await r.json();$('#alist').innerHTML=(d.addresses||[]).map((a,i)=>`<div style="display:flex;justify-content:space-between;padding:9px;background:rgba(0,0,0,.2);border-radius:10px;margin-bottom:5px;font-size:13px"><span>${a}</span><button class="btn bd" style="padding:3px 9px;font-size:11px" onclick="delA(${i})">حذف</button></div>`).join('')||'<div style="color:var(--muted);font-size:13px">خالی</div>'}
+async function loadA(){const r=await fetch('/api/addresses');const d=await r.json();$('#alist').innerHTML=(d.addresses||[]).map((a,i)=>`<div style="display:flex;justify-content:space-between;padding:9px;background:rgba(148,163,184,.08);border-radius:10px;margin-bottom:5px;font-size:13px"><span>${a}</span><button class="btn bd" style="padding:3px 9px;font-size:11px" onclick="delA(${i})">حذف</button></div>`).join('')||'<div style="color:var(--muted);font-size:13px">خالی</div>'}
 async function addAddr(){const a=$('#new-addr').value.trim();if(!a)return;await fetch('/api/addresses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:a})});$('#new-addr').value='';loadA();toast('افزوده شد')}
 async function delA(i){await fetch('/api/addresses/'+i,{method:'DELETE'});loadA()}
 async function loadTg(){const r=await fetch('/api/telegram');const d=await r.json();$('#tg-st').innerHTML=d.enabled?'<span style="color:var(--green)">● روشن</span> — '+(d.admin_ids||[]).join(', '):'<span style="color:var(--red)">● خاموش</span>';if(d.admin_ids?.length)$('#tg-adm').value=d.admin_ids.join(' ')}
