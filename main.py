@@ -91,7 +91,7 @@ APP_PHOTOS = {
         "download": "https://github.com/2dust/v2rayNG/releases/latest"
     },
     "NPV Tunnel": {
-        "file": "NPVTunnel.pnq",
+        "file": "NPV Tunnel.pnq",
         "name": "NPV Tunnel",
         "fallback": "🔒",
         "download": "https://play.google.com/store/apps/details?id=com.npv.tunnel"
