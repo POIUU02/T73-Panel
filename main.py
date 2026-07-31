@@ -55,7 +55,7 @@ CONFIG = {"port": int(os.environ.get("PORT", 8080)), "secret": SECRET_KEY}
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 # ================================================================
-# ========== STATIC FILES (برای عکس‌های برنامه‌ها) ==========
+# ========== STATIC FILES ==========
 # ================================================================
 STATIC_DIR = Path("client/icons")
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
@@ -75,7 +75,7 @@ TELEGRAM_LOCK, TELEGRAM_TASK, TG_STATE = asyncio.Lock(), None, {}
 SESSION_COOKIE, SESSION_TTL = "vroom_session", 60 * 60 * 24 * 7
 
 # ================================================================
-# ========== APP PHOTOS - فقط ۷ برنامه ==========
+# ========== APP PHOTOS ==========
 # ================================================================
 APP_PHOTOS = {
     "Hiddify": {
@@ -91,7 +91,7 @@ APP_PHOTOS = {
         "download": "https://github.com/2dust/v2rayNG/releases/latest"
     },
     "NPV Tunnel": {
-        "file": "NPV Tunnel.pnq",
+        "file": "NPVTunnel.pnq",
         "name": "NPV Tunnel",
         "fallback": "🔒",
         "download": "https://play.google.com/store/apps/details?id=com.npv.tunnel"
