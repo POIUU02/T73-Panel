@@ -102,12 +102,6 @@ APP_PHOTOS = {
         "fallback": "🟢",
         "download": "https://apps.apple.com/app/happ/id123456789"
     },
-    "clash mi": {
-        "file": "clash mi.pnq",
-        "name": "Clash Meta",
-        "fallback": "⚔️",
-        "download": "https://github.com/MetaCubeX/ClashMetaForAndroid/releases/latest"
-    },
     "v2box": {
         "file": "v2box.png",
         "name": "V2Box",
@@ -129,7 +123,6 @@ async def get_app_photo(app_id: str):
     if not app_data:
         return {"url": None, "fallback": "📱", "download": ""}
     
-    # بررسی وجود فایل
     filepath = STATIC_DIR / app_data["file"]
     if filepath.exists():
         return {
@@ -778,7 +771,7 @@ async def subscription_raw(uid: str, request: Request):
     return Response(content=raw, media_type="text/plain; charset=utf-8", headers=headers)
 
 # ================================================================
-# ========== PAGE HTML (با عکس‌های واقعی - FIXED) ==========
+# ========== PAGE HTML ==========
 # ================================================================
 @app.get("/page/{uid}")
 async def subscription_page(uid: str):
@@ -941,14 +934,14 @@ footer b{{background:linear-gradient(135deg,var(--g),var(--ac));-webkit-backgrou
 const SUB='{sub_url}', CFG=`{server_link}`, P={percent};
 
 // ================================================================
-// ========== فقط ۴ برنامه اصلی با عکس‌های واقعی ==========
+// ========== برنامه‌ها برای هر پلتفرم ==========
 // ================================================================
 const CATALOG = {{
     android: [
         {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
         {{id:'v2rayng',name:'v2rayNG',scheme:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},
-        {{id:'clash mi',name:'Clash Meta',scheme:'clash://install-config?url='+encodeURIComponent(SUB)}},
-        {{id:'v2box',name:'V2Box',scheme:'v2box://install-config?url='+encodeURIComponent(SUB)}}
+        {{id:'v2box',name:'V2Box',scheme:'v2box://install-config?url='+encodeURIComponent(SUB)}},
+        {{id:'NPV Tunnel',name:'NPV Tunnel',scheme:'npv://import?url='+encodeURIComponent(SUB)}}
     ],
     ios: [
         {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
@@ -958,8 +951,7 @@ const CATALOG = {{
     ],
     windows: [
         {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
-        {{id:'v2rayn',name:'v2rayN',scheme:'v2rayN://import?url='+encodeURIComponent(SUB)}},
-        {{id:'clash mi',name:'Clash Meta',scheme:'clash://install-config?url='+encodeURIComponent(SUB)}}
+        {{id:'v2rayn',name:'v2rayN',scheme:'v2rayN://import?url='+encodeURIComponent(SUB)}}
     ],
     macos: [
         {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
@@ -968,13 +960,12 @@ const CATALOG = {{
     ],
     linux: [
         {{id:'Hiddify',name:'Hiddify',scheme:'hiddify://import/'+encodeURIComponent(SUB)}},
-        {{id:'v2rayn',name:'v2rayN',scheme:'v2rayN://import?url='+encodeURIComponent(SUB)}},
-        {{id:'clash mi',name:'Clash Meta',scheme:'clash://install-config?url='+encodeURIComponent(SUB)}}
+        {{id:'v2rayn',name:'v2rayN',scheme:'v2rayN://import?url='+encodeURIComponent(SUB)}}
     ]
 }};
 
 // ================================================================
-// ========== دریافت عکس از سرور (مسیر درست) ==========
+// ========== دریافت عکس از سرور ==========
 // ================================================================
 async function getAppPhoto(appId) {{
     try {{
@@ -983,12 +974,14 @@ async function getAppPhoto(appId) {{
             const d = await r.json();
             return {{url: d.url, download: d.download, name: d.name}};
         }}
-    }} catch(e) {{}}
+    }} catch(e) {{
+        console.log('Error loading photo for:', appId, e);
+    }}
     return {{url: null, download: null, name: appId}};
 }}
 
 // ================================================================
-// ========== نمایش پلتفرم با عکس‌های واقعی ==========
+// ========== نمایش پلتفرم ==========
 // ================================================================
 async function showPlat(p, btn) {{
     document.querySelectorAll('.plat-btn').forEach(b => b.classList.remove('on'));
@@ -1007,7 +1000,6 @@ async function showPlat(p, btn) {{
         </div>
     `).join('');
 
-    // لود کردن عکس‌ها برای هر برنامه
     for (const a of list) {{
         const data = await getAppPhoto(a.id);
         const photoDiv = document.querySelector(`#app-${{a.id}} .app-photo`);
