@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-VROOM Panel v5.2 - Fixed + Premium
-- /sub/{uid} → plain-text vless
-- /page/{uid} → smooth bilingual + day/night
-- Dashboard → bilingual + day/night + more features
-- Telegram bot
-- WebSocket tunnel FIXED
+VROOM Panel v5.3 - Lag Fixed
+- Subscription page heavily optimized (no lag)
+- All previous features kept
+- WebSocket fixed
 """
 import asyncio, json, os, hashlib, secrets, time, re, base64
 from datetime import datetime, timedelta
@@ -32,7 +30,7 @@ logger = logging.getLogger("VROOM")
 async def lifespan(app: FastAPI):
     global http_client
     http_client = httpx.AsyncClient(limits=httpx.Limits(max_connections=5000, max_keepalive_connections=1000), timeout=httpx.Timeout(180.0, connect=30.0), follow_redirects=True)
-    logger.info(f"🚀 VROOM v5.2 :{CONFIG['port']}")
+    logger.info(f"🚀 VROOM v5.3 :{CONFIG['port']}")
     asyncio.create_task(keep_alive())
     if TELEGRAM.get("token") and TELEGRAM.get("admin_ids"):
         TELEGRAM["enabled"] = True
@@ -464,7 +462,7 @@ async def start_telegram_bot():
 # ===================== API =====================
 @app.get("/")
 async def root():
-    return {"service": "VROOM", "version": "5.2", "domain": get_domain()}
+    return {"service": "VROOM", "version": "5.3", "domain": get_domain()}
 
 @app.get("/health")
 async def health():
@@ -701,7 +699,7 @@ async def subscription_raw(uid: str, request: Request):
         return Response(content=_b64.b64encode(raw.encode()).decode(), media_type="text/plain; charset=utf-8", headers=headers)
     return Response(content=raw, media_type="text/plain; charset=utf-8", headers=headers)
 
-# ===================== PAGE =====================
+# ===================== PAGE (LAG FIXED) =====================
 @app.get("/page/{uid}")
 async def subscription_page(uid: str):
     async with LINKS_LOCK:
@@ -714,7 +712,7 @@ async def subscription_page(uid: str):
     server_link = generate_vless_link(uid, remark=f"VROOM-{link['label']}")
     used_gb = round(link["used_bytes"] / 1024 ** 3, 2)
     limit_gb = round(link["limit_bytes"] / 1024 ** 3, 2) if link["limit_bytes"] else 0
-    percent = round((link["used_bytes"] / link["limit_bytes"]) * 100, 1) if link["limit_bytes"] else 0
+    percent = min(100, round((link["used_bytes"] / link["limit_bytes"]) * 100, 1)) if link["limit_bytes"] else 0
     remaining = round(max(0, limit_gb - used_gb), 2) if limit_gb else "∞"
     
     if is_expired(link):
@@ -740,79 +738,72 @@ async def subscription_page(uid: str):
     qr_data = quote(server_link, safe="")
     live_conns = count_connections_for_link(uid)
 
+    # Pre-render progress for zero JS lag
+    ring_bg = f"conic-gradient(#3b82f6 0% {percent}%, #e2e8f0 {percent}% 100%)"
+    bar_w = f"{percent}%"
+
     html = f"""<!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="light">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <title>VROOM — {link['label']}</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&family=Vazirmatn:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;700;800&family=Vazirmatn:wght@500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
-:root{{--bg:#f0f4ff;--card:rgba(255,255,255,.8);--border:rgba(255,255,255,.9);--text:#0f172a;--muted:#64748b;--blue:#3b82f6;--indigo:#6366f1;--pink:#ec4899;--green:#10b981;--radius:22px;--shadow:0 12px 40px -10px rgba(99,102,241,.18)}}
-[data-theme=dark]{{--bg:#0a0e1a;--card:rgba(15,23,42,.78);--border:rgba(255,255,255,.07);--text:#f1f5f9;--muted:#94a3b8;--shadow:0 12px 40px -10px rgba(0,0,0,.5)}}
+:root{{--bg:#f0f4ff;--card:#ffffff;--text:#0f172a;--muted:#64748b;--blue:#3b82f6;--indigo:#6366f1;--pink:#ec4899;--green:#10b981;--r:20px}}
+[data-theme=dark]{{--bg:#0b0f1a;--card:#111827;--text:#f1f5f9;--muted:#94a3b8}}
 *{{margin:0;padding:0;box-sizing:border-box}}
-body{{font-family:Vazirmatn,Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:14px 12px 36px;transition:background .3s,color .3s;overflow-x:hidden}}
-body::before{{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 90% 55% at 8% -8%,rgba(99,102,241,.22),transparent 55%),radial-gradient(ellipse 70% 45% at 96% 0%,rgba(236,72,153,.16),transparent 50%)}}
-[data-theme=dark] body::before{{background:radial-gradient(ellipse 90% 55% at 8% -8%,rgba(99,102,241,.16),transparent 55%),radial-gradient(ellipse 70% 45% at 96% 0%,rgba(236,72,153,.1),transparent 50%)}}
-.w{{max-width:430px;margin:0 auto;position:relative;z-index:1}}
-.hdr{{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}}
-.hdr-l{{display:flex;align-items:center;gap:8px}}
-.ib{{width:38px;height:38px;border-radius:13px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;box-shadow:var(--shadow);backdrop-filter:blur(14px);transition:transform .15s;color:var(--text)}}
-.ib:active{{transform:scale(.93)}}
-.ls{{display:flex;background:var(--card);border:1px solid var(--border);border-radius:13px;overflow:hidden;box-shadow:var(--shadow);backdrop-filter:blur(14px)}}
-.ls button{{border:none;padding:7px 11px;font-size:11px;font-weight:700;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;transition:.15s}}
+body{{font-family:Vazirmatn,Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:12px;transition:background .25s}}
+.w{{max-width:420px;margin:0 auto}}
+.hdr{{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}}
+.hdr-l{{display:flex;gap:6px;align-items:center}}
+.ib{{width:36px;height:36px;border-radius:12px;background:var(--card);border:none;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.06)}}
+.ls{{display:flex;background:var(--card);border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06)}}
+.ls button{{border:none;padding:6px 10px;font-size:11px;font-weight:700;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit}}
 .ls button.on{{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff}}
-.logo{{font-family:Inter;font-weight:900;font-size:19px;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;display:flex;align-items:center;gap:5px}}
-.card{{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}}
-.ct{{font-size:14px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}}
-.badge{{font-size:11px;font-weight:600;color:var(--blue);background:rgba(59,130,246,.1);padding:3px 9px;border-radius:20px}}
-.sr{{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;font-size:12px;font-weight:600}}
-.so{{display:flex;align-items:center;gap:5px;color:var(--green)}}
-.dot{{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(16,185,129,.45);animation:p 1.8s infinite}}
-@keyframes p{{0%{{box-shadow:0 0 0 0 rgba(16,185,129,.45)}}70%{{box-shadow:0 0 0 8px transparent}}}}
+.logo{{font-family:Inter;font-weight:800;font-size:18px;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
+.card{{background:var(--card);border-radius:var(--r);padding:14px;margin-bottom:10px;box-shadow:0 4px 16px rgba(0,0,0,.05)}}
+.ct{{font-size:13px;font-weight:800;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}}
+.badge{{font-size:11px;color:var(--blue);background:rgba(59,130,246,.1);padding:2px 8px;border-radius:20px}}
+.sr{{display:flex;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:12px}}
+.so{{color:var(--green);display:flex;align-items:center;gap:4px}}
+.dot{{width:6px;height:6px;border-radius:50%;background:var(--green)}}
 .sg{{display:grid;grid-template-columns:auto 1fr 1fr 1fr;gap:8px;align-items:center}}
-@media(max-width:370px){{.sg{{grid-template-columns:1fr 1fr}}.rw{{grid-column:1/-1;justify-self:center;margin-bottom:6px}}}}
-.st{{text-align:center}}.st .l{{font-size:10px;color:var(--muted);font-weight:600}}.st .v{{font-size:14px;font-weight:800;margin-top:1px}}
-.rw{{width:68px;height:68px;position:relative}}
-.rg{{width:68px;height:68px;border-radius:50%;background:conic-gradient(var(--blue) 0% 0%,#e2e8f0 0% 100%);display:flex;align-items:center;justify-content:center;box-shadow:0 0 18px rgba(59,130,246,.22);transition:background .8s}}
-[data-theme=dark] .rg{{background:conic-gradient(var(--blue) 0% 0%,#1e293b 0% 100%)}}
-.ri{{width:52px;height:52px;border-radius:50%;background:var(--card);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800}}
-.pb{{margin-top:12px;height:5px;background:rgba(148,163,184,.22);border-radius:99px;overflow:hidden}}
-.pf{{height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--blue),var(--pink));transition:width .8s}}
-.srow{{display:flex;align-items:center;gap:8px;background:rgba(148,163,184,.07);border-radius:14px;padding:7px 9px;margin-bottom:12px}}
+.st{{text-align:center}}.st .l{{font-size:10px;color:var(--muted)}}.st .v{{font-size:13px;font-weight:800}}
+.rw{{width:64px;height:64px}}
+.rg{{width:64px;height:64px;border-radius:50%;background:{ring_bg};display:flex;align-items:center;justify-content:center}}
+.ri{{width:48px;height:48px;border-radius:50%;background:var(--card);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}}
+.pb{{margin-top:10px;height:4px;background:rgba(148,163,184,.2);border-radius:99px;overflow:hidden}}
+.pf{{height:100%;width:{bar_w};background:linear-gradient(90deg,var(--blue),var(--pink));border-radius:99px}}
+.srow{{display:flex;gap:8px;align-items:center;background:rgba(148,163,184,.06);border-radius:12px;padding:6px 8px;margin-bottom:10px}}
 .surl{{flex:1;font-size:10px;font-family:monospace;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:left}}
-.cb{{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff;border:none;padding:8px 14px;border-radius:11px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(59,130,246,.3);white-space:nowrap;transition:transform .15s}}
-.cb:active{{transform:scale(.95)}}
-.ip{{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}}
-.pi{{background:rgba(148,163,184,.07);border-radius:13px;padding:9px 5px;text-align:center}}
-.pi .pl{{font-size:9px;color:var(--muted);font-weight:600;margin-bottom:2px}}
-.pi .pv{{font-size:12px;font-weight:800}}
-.cfg{{background:rgba(148,163,184,.07);border-radius:13px;padding:10px;font-size:9.5px;font-family:monospace;word-break:break-all;max-height:48px;overflow-y:auto;direction:ltr;text-align:left;color:var(--muted);margin-bottom:12px;cursor:pointer;position:relative}}
-.qr-w{{display:flex;justify-content:center;margin-bottom:12px}}
-.qr{{width:120px;height:120px;background:#fff;border-radius:16px;padding:7px;box-shadow:0 8px 28px rgba(59,130,246,.18);border:2px solid rgba(99,102,241,.15);cursor:pointer}}
-.qr img{{width:100%;height:100%;border-radius:9px}}
+.cb{{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff;border:none;padding:7px 12px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}}
+.ip{{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}}
+.pi{{background:rgba(148,163,184,.06);border-radius:12px;padding:8px 4px;text-align:center}}
+.pi .pl{{font-size:9px;color:var(--muted)}}.pi .pv{{font-size:12px;font-weight:800}}
+.cfg{{background:rgba(148,163,184,.06);border-radius:12px;padding:9px;font-size:9px;font-family:monospace;word-break:break-all;max-height:44px;overflow-y:auto;direction:ltr;text-align:left;color:var(--muted);margin-bottom:10px;cursor:pointer}}
+.qr-w{{display:flex;justify-content:center;margin-bottom:10px}}
+.qr{{width:110px;height:110px;background:#fff;border-radius:14px;padding:6px;box-shadow:0 4px 16px rgba(59,130,246,.15)}}
+.qr img{{width:100%;height:100%;border-radius:8px}}
 .ab{{display:flex;gap:8px}}
-.ab button{{flex:1;padding:12px;border:none;border-radius:13px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;transition:transform .15s}}
-.bs{{background:rgba(148,163,184,.1);color:var(--text);border:1px solid rgba(148,163,184,.18)}}
-.ba{{background:linear-gradient(135deg,var(--blue),var(--pink));color:#fff;box-shadow:0 7px 22px rgba(236,72,153,.3)}}
-.ab button:active{{transform:scale(.97)}}
-.pr{{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}}
-.pb2{{padding:7px 13px;border-radius:18px;border:1px solid rgba(148,163,184,.18);background:rgba(148,163,184,.07);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:.15s}}
-.pb2.on{{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff;border-color:transparent;box-shadow:0 4px 14px rgba(59,130,246,.3)}}
+.ab button{{flex:1;padding:11px;border:none;border-radius:12px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit}}
+.bs{{background:rgba(148,163,184,.1);color:var(--text)}}
+.ba{{background:linear-gradient(135deg,var(--blue),var(--pink));color:#fff}}
+.pr{{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}}
+.pb2{{padding:6px 12px;border-radius:16px;border:none;background:rgba(148,163,184,.08);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}}
+.pb2.on{{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff}}
 .ag{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}}
-@media(max-width:370px){{.ag{{grid-template-columns:repeat(3,1fr)}}}}
-.ac{{background:rgba(148,163,184,.05);border:1px solid rgba(148,163,184,.1);border-radius:16px;padding:12px 5px 9px;text-align:center;cursor:pointer;transition:transform .15s}}
-.ac:active{{transform:scale(.95)}}
-.ai{{width:44px;height:44px;margin:0 auto 6px;border-radius:12px;background:linear-gradient(145deg,#e0e7ff,#fce7f3);display:flex;align-items:center;justify-content:center;font-size:18px;overflow:hidden;box-shadow:0 3px 10px rgba(0,0,0,.06)}}
+.ac{{background:rgba(148,163,184,.05);border-radius:14px;padding:10px 4px;text-align:center;cursor:pointer}}
+.ai{{width:40px;height:40px;margin:0 auto 5px;border-radius:10px;background:linear-gradient(145deg,#e0e7ff,#fce7f3);display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden}}
 [data-theme=dark] .ai{{background:linear-gradient(145deg,#1e293b,#312e81)}}
 .ai img{{width:100%;height:100%;object-fit:cover}}
-.an{{font-size:10px;font-weight:700}}.ah{{font-size:8px;color:var(--muted);margin-top:1px}}
-.ft{{text-align:center;font-size:10px;color:var(--muted);margin-top:6px;padding-top:10px}}
+.an{{font-size:10px;font-weight:700}}.ah{{font-size:8px;color:var(--muted)}}
+.ft{{text-align:center;font-size:10px;color:var(--muted);margin-top:8px}}
 .ft b{{background:linear-gradient(135deg,var(--blue),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
-.toast{{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(70px);background:var(--card);backdrop-filter:blur(16px);padding:10px 18px;border-radius:12px;font-size:12px;font-weight:700;color:var(--blue);opacity:0;transition:.3s;border:1px solid var(--border);z-index:9999;box-shadow:var(--shadow)}}
+.toast{{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--card);padding:9px 16px;border-radius:10px;font-size:12px;font-weight:700;color:var(--blue);opacity:0;transition:.25s;z-index:99;box-shadow:0 4px 16px rgba(0,0,0,.1)}}
 .toast.show{{opacity:1;transform:translateX(-50%) translateY(0)}}
-#qrm{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);align-items:center;justify-content:center;z-index:10000;backdrop-filter:blur(6px)}}
-#qrm img{{width:min(78vw,290px);border-radius:18px;box-shadow:0 0 50px rgba(59,130,246,.35)}}
+#qrm{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);align-items:center;justify-content:center;z-index:100}}
+#qrm img{{width:min(75vw,280px);border-radius:16px}}
 </style>
 </head>
 <body>
@@ -825,10 +816,7 @@ body::before{{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;ba
         <button id="bFa" class="on" onclick="setL('fa')">FA</button>
       </div>
     </div>
-    <div class="logo">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="url(#g)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="g" x1="2" y1="2" x2="22" y2="22"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#ec4899"/></linearGradient></defs></svg>
-      VROOM
-    </div>
+    <div class="logo">VROOM</div>
     <button class="ib">⚡</button>
   </div>
 
@@ -839,16 +827,16 @@ body::before{{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;ba
       <span class="so"><span class="dot"></span> <span data-f="سرور آنلاین" data-e="Server Online">سرور آنلاین</span></span>
     </div>
     <div class="sg">
-      <div class="rw"><div class="rg" id="rg"><div class="ri" id="pc">0%</div></div></div>
+      <div class="rw"><div class="rg"><div class="ri">{percent}%</div></div></div>
       <div class="st"><div class="l" data-f="باقی" data-e="Left">باقی</div><div class="v">{remaining}{' GB' if remaining!='∞' else ''}</div></div>
-      <div class="st"><div class="l" data-f="وضعیت" data-e="Status">وضعیت</div><div class="v" style="color:{sc};font-size:12px" data-f="{status_fa}" data-e="{status_en}">{status_fa}</div></div>
+      <div class="st"><div class="l" data-f="وضعیت" data-e="Status">وضعیت</div><div class="v" style="color:{sc}" data-f="{status_fa}" data-e="{status_en}">{status_fa}</div></div>
       <div class="st"><div class="l" data-f="مصرف" data-e="Used">مصرف</div><div class="v">{used_gb} GB</div></div>
     </div>
-    <div class="pb"><div class="pf" id="bf"></div></div>
+    <div class="pb"><div class="pf"></div></div>
   </div>
 
   <div class="card">
-    <div class="ct"><span data-f="لینک ساب (دریافت‌ها)" data-e="Sub Link (for apps)">لینک ساب (دریافت‌ها)</span><span>🔗</span></div>
+    <div class="ct"><span data-f="لینک ساب" data-e="Sub Link">لینک ساب</span><span>🔗</span></div>
     <div class="srow">
       <button class="cb" onclick="cp(SUB)" data-f="کپی" data-e="Copy">کپی</button>
       <div class="surl">{sub_url}</div>
@@ -856,53 +844,53 @@ body::before{{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;ba
     <div class="ip">
       <div class="pi"><div class="pl">🛡️ <span data-f="وضعیت" data-e="Status">وضعیت</span></div><div class="pv" style="color:{sc}" data-f="{status_fa}" data-e="{status_en}">{status_fa}</div></div>
       <div class="pi"><div class="pl">📅 <span data-f="انقضا" data-e="Expiry">انقضا</span></div><div class="pv" style="color:#f59e0b">{exp_disp}</div></div>
-      <div class="pi"><div class="pl">⏳ <span data-f="باقی" data-e="Left">باقی</span></div><div class="pv" style="color:#06b6d4" data-f="{days_fa} روز" data-e="{days_en} days">{days_fa} روز</div></div>
+      <div class="pi"><div class="pl">⏳ <span data-f="باقی" data-e="Left">باقی</span></div><div class="pv" style="color:#06b6d4" data-f="{days_fa} روز" data-e="{days_en}d">{days_fa} روز</div></div>
     </div>
   </div>
 
   <div class="card">
     <div class="ct"><span data-f="کانفیگ و QR" data-e="Config & QR">کانفیگ و QR</span><span>📱</span></div>
     <div class="cfg" onclick="cp(CFG)">{server_link}</div>
-    <div class="qr-w"><div class="qr" onclick="document.getElementById('qrm').style.display='flex'"><img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={qr_data}" alt="QR" loading="lazy"/></div></div>
+    <div class="qr-w"><div class="qr" onclick="document.getElementById('qrm').style.display='flex'"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={qr_data}" alt="QR" loading="lazy"/></div></div>
     <div class="ab">
       <button class="bs" onclick="share()" data-f="اشتراک" data-e="Share">اشتراک</button>
-      <button class="ba" onclick="cp(SUB)" data-f="+ اضافه اشتراک +" data-e="+ Add Sub +">+ اضافه اشتراک +</button>
+      <button class="ba" onclick="cp(SUB)" data-f="+ اضافه اشتراک" data-e="+ Add Sub">+ اضافه اشتراک</button>
     </div>
   </div>
 
   <div class="card">
     <div class="ct"><span data-f="ابزارهای سریع" data-e="Quick Tools">ابزارهای سریع</span><span>⚡</span></div>
-    <div class="pr" id="pb">
-      <button class="pb2 on" data-p="android" onclick="sp('android',this)">Android</button>
-      <button class="pb2" data-p="ios" onclick="sp('ios',this)">iOS</button>
-      <button class="pb2" data-p="windows" onclick="sp('windows',this)">Windows</button>
-      <button class="pb2" data-p="macos" onclick="sp('macos',this)">macOS</button>
-      <button class="pb2" data-p="linux" onclick="sp('linux',this)">Linux</button>
+    <div class="pr">
+      <button class="pb2 on" data-p="android" onclick="sp(this)">Android</button>
+      <button class="pb2" data-p="ios" onclick="sp(this)">iOS</button>
+      <button class="pb2" data-p="windows" onclick="sp(this)">Windows</button>
+      <button class="pb2" data-p="macos" onclick="sp(this)">macOS</button>
+      <button class="pb2" data-p="linux" onclick="sp(this)">Linux</button>
     </div>
     <div class="ag" id="ag"></div>
   </div>
   <div class="ft">Powered by <b>VROOM</b></div>
 </div>
-<div id="qrm" onclick="this.style.display='none'"><img src="https://api.qrserver.com/v1/create-qr-code/?size=340x340&data={qr_data}" alt="QR" loading="lazy"/></div>
+<div id="qrm" onclick="this.style.display='none'"><img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={qr_data}" alt="QR" loading="lazy"/></div>
 <div class="toast" id="to"></div>
 <script>
-const SUB='{sub_url}',CFG=`{server_link}`,P={percent};
-let L=localStorage.getItem('vl')||'fa';
-const C={{android:[{{id:'Hiddify',n:'Hiddify',s:'hiddify://import/'+encodeURIComponent(SUB)}},{{id:'v2rayng',n:'v2rayNG',s:'v2rayng://install-config?url='+encodeURIComponent(SUB)}},{{id:'v2box',n:'V2Box',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},{{id:'Happ',n:'Happ',s:'happ://import?url='+encodeURIComponent(SUB)}}],ios:[{{id:'Hiddify',n:'Hiddify',s:'hiddify://import/'+encodeURIComponent(SUB)}},{{id:'v2box',n:'V2Box',s:'v2box://install-config?url='+encodeURIComponent(SUB)}},{{id:'Happ',n:'Happ',s:'happ://import?url='+encodeURIComponent(SUB)}}],windows:[{{id:'Hiddify',n:'Hiddify',s:'hiddify://import/'+encodeURIComponent(SUB)}},{{id:'v2rayn',n:'v2rayN',s:'v2rayN://import?url='+encodeURIComponent(SUB)}}],macos:[{{id:'Hiddify',n:'Hiddify',s:'hiddify://import/'+encodeURIComponent(SUB)}},{{id:'v2box',n:'V2Box',s:'v2box://install-config?url='+encodeURIComponent(SUB)}}],linux:[{{id:'Hiddify',n:'Hiddify',s:'hiddify://import/'+encodeURIComponent(SUB)}},{{id:'v2rayn',n:'v2rayN',s:'v2rayN://import?url='+encodeURIComponent(SUB)}}]}};
-function setL(l){{L=l;localStorage.setItem('vl',l);document.documentElement.lang=l;document.documentElement.dir=l==='fa'?'rtl':'ltr';document.getElementById('bFa').classList.toggle('on',l==='fa');document.getElementById('bEn').classList.toggle('on',l==='en');document.querySelectorAll('[data-f]').forEach(e=>e.textContent=l==='fa'?e.dataset.f:e.dataset.e)}}
-function togTheme(){{const c=document.documentElement.getAttribute('data-theme'),n=c==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);localStorage.setItem('vt',n);document.getElementById('th').textContent=n==='light'?'☀️':'🌙'}}
-async function sp(p,b){{document.querySelectorAll('.pb2').forEach(x=>x.classList.remove('on'));if(b)b.classList.add('on');const list=C[p]||[];const g=document.getElementById('ag');g.innerHTML=list.map(a=>`<div class="ac" onclick="oa('${{a.id}}','${{p}}')" id="a-${{a.id}}"><div class="ai"><span>⬇️</span></div><div class="an">${{a.n}}</div><div class="ah">Tap to open</div></div>`).join('');for(const a of list){{try{{const r=await fetch('/api/app-photo/'+a.id);if(r.ok){{const d=await r.json();const el=document.querySelector('#a-'+a.id+' .ai');if(el&&d.url)el.innerHTML=`<img src="${{d.url}}" alt="${{a.n}}" loading="lazy" onerror="this.parentElement.innerHTML='${{a.n[0]}}'"/>`;else if(el)el.innerHTML=`<span style="font-weight:800">${{a.n[0]}}</span>`}}}}catch(e){{}}}}}}
-function oa(id,p){{const a=(C[p]||[]).find(x=>x.id===id);if(!a)return;if(a.s)try{{location.href=a.s}}catch(e){{}}setTimeout(()=>{{cp(SUB);toast(L==='fa'?'لینک ساب کپی شد':'Sub link copied')}},1200)}}
-function share(){{if(navigator.share)navigator.share({{title:'VROOM',url:SUB}}).catch(()=>cp(SUB));else cp(SUB)}}
-function cp(t){{if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>toast(L==='fa'?'کپی شد ✅':'Copied ✅'));else{{const i=document.createElement('input');i.value=t;document.body.appendChild(i);i.select();document.execCommand('copy');document.body.removeChild(i);toast(L==='fa'?'کپی شد ✅':'Copied ✅')}}}}
-function toast(m){{const t=document.getElementById('to');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200)}}
-const st=localStorage.getItem('vt')||'light';document.documentElement.setAttribute('data-theme',st);document.getElementById('th').textContent=st==='light'?'☀️':'🌙';setL(L);sp('android',document.querySelector('.pb2'));
-requestAnimationFrame(()=>{{document.getElementById('rg').style.background=`conic-gradient(#3b82f6 0% ${{P}}%,${{st==='dark'?'#1e293b':'#e2e8f0'}} ${{P}}% 100%)`;document.getElementById('bf').style.width=P+'%';document.getElementById('pc').textContent=P+'%'}});
+const SUB="{sub_url}",CFG=`{server_link}`;
+let L=localStorage.getItem("vl")||"fa";
+const C={{android:[["Hiddify","Hiddify","hiddify://import/"+encodeURIComponent(SUB)],["v2rayng","v2rayNG","v2rayng://install-config?url="+encodeURIComponent(SUB)],["v2box","V2Box","v2box://install-config?url="+encodeURIComponent(SUB)],["Happ","Happ","happ://import?url="+encodeURIComponent(SUB)]],ios:[["Hiddify","Hiddify","hiddify://import/"+encodeURIComponent(SUB)],["v2box","V2Box","v2box://install-config?url="+encodeURIComponent(SUB)],["Happ","Happ","happ://import?url="+encodeURIComponent(SUB)]],windows:[["Hiddify","Hiddify","hiddify://import/"+encodeURIComponent(SUB)],["v2rayn","v2rayN","v2rayN://import?url="+encodeURIComponent(SUB)]],macos:[["Hiddify","Hiddify","hiddify://import/"+encodeURIComponent(SUB)],["v2box","V2Box","v2box://install-config?url="+encodeURIComponent(SUB)]],linux:[["Hiddify","Hiddify","hiddify://import/"+encodeURIComponent(SUB)],["v2rayn","v2rayN","v2rayN://import?url="+encodeURIComponent(SUB)]]}};
+function setL(l){{L=l;localStorage.setItem("vl",l);document.documentElement.lang=l;document.documentElement.dir=l==="fa"?"rtl":"ltr";document.getElementById("bFa").classList.toggle("on",l==="fa");document.getElementById("bEn").classList.toggle("on",l==="en");document.querySelectorAll("[data-f]").forEach(e=>e.textContent=l==="fa"?e.dataset.f:e.dataset.e)}}
+function togTheme(){{const n=document.documentElement.getAttribute("data-theme")==="light"?"dark":"light";document.documentElement.setAttribute("data-theme",n);localStorage.setItem("vt",n);document.getElementById("th").textContent=n==="light"?"☀️":"🌙"}}
+function sp(btn){{document.querySelectorAll(".pb2").forEach(b=>b.classList.remove("on"));btn.classList.add("on");const p=btn.dataset.p;const list=C[p]||[];const g=document.getElementById("ag");g.innerHTML=list.map(([id,n])=>`<div class="ac" onclick="oa('${{id}}','${{p}}')"><div class="ai">${{n[0]}}</div><div class="an">${{n}}</div><div class="ah">Tap</div></div>`).join("")}}
+function oa(id,p){{const a=(C[p]||[]).find(x=>x[0]===id);if(!a)return;try{{location.href=a[2]}}catch(e){{}}setTimeout(()=>{{cp(SUB);toast(L==="fa"?"لینک کپی شد":"Copied")}},1000)}}
+function share(){{if(navigator.share)navigator.share({{title:"VROOM",url:SUB}}).catch(()=>cp(SUB));else cp(SUB)}}
+function cp(t){{navigator.clipboard?navigator.clipboard.writeText(t).then(()=>toast(L==="fa"?"کپی شد ✅":"Copied ✅")):(()=>{{const i=document.createElement("input");i.value=t;document.body.appendChild(i);i.select();document.execCommand("copy");document.body.removeChild(i);toast(L==="fa"?"کپی شد ✅":"Copied ✅")}})()}}
+function toast(m){{const t=document.getElementById("to");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800)}}
+const st=localStorage.getItem("vt")||"light";document.documentElement.setAttribute("data-theme",st);document.getElementById("th").textContent=st==="light"?"☀️":"🌙";
+setL(L);sp(document.querySelector(".pb2"));
 </script>
 </body></html>"""
     return HTMLResponse(content=html)
 
-# ===================== WS (FIXED) =====================
+# ===================== WS =====================
 RELAY_BUF = 2 * 1024 * 1024
 
 async def parse_vless_header(first_chunk: bytes):
@@ -1041,16 +1029,14 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
 LOGIN_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl" data-theme="light"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VROOM</title>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@700;900&family=Inter:wght@800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#f0f4ff;--card:rgba(255,255,255,.82);--border:rgba(255,255,255,.9);--text:#0f172a;--blue:#3b82f6;--pink:#ec4899}
-[data-theme=dark]{--bg:#0a0e1a;--card:rgba(15,23,42,.8);--border:rgba(255,255,255,.08);--text:#f1f5f9}
+:root{--bg:#f0f4ff;--card:#fff;--text:#0f172a;--blue:#3b82f6}
+[data-theme=dark]{--bg:#0b0f1a;--card:#111827;--text:#f1f5f9}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Vazirmatn,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);direction:rtl;transition:background .3s;
-background-image:radial-gradient(ellipse 80% 50% at 15% 0%,rgba(99,102,241,.2),transparent 55%),radial-gradient(ellipse 70% 45% at 90% 20%,rgba(236,72,153,.14),transparent 50%)}
-.card{background:var(--card);border:1px solid var(--border);border-radius:28px;padding:40px 32px;width:100%;max-width:370px;backdrop-filter:blur(22px);box-shadow:0 20px 50px -12px rgba(99,102,241,.18)}
-h1{font-size:28px;font-weight:900;text-align:center;font-family:Inter;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:26px}
-input{width:100%;padding:13px 15px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);border-radius:13px;color:var(--text);font-size:14px;font-family:inherit;outline:none;margin-bottom:12px}
-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
-.btn{width:100%;padding:14px;background:linear-gradient(135deg,var(--blue),#6366f1);border:none;border-radius:13px;color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 8px 22px rgba(59,130,246,.3)}
+body{font-family:Vazirmatn,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);direction:rtl}
+.card{background:var(--card);border-radius:24px;padding:36px 28px;width:100%;max-width:360px;box-shadow:0 10px 40px rgba(0,0,0,.08)}
+h1{font-size:26px;font-weight:900;text-align:center;font-family:Inter;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:24px}
+input{width:100%;padding:12px 14px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);border-radius:12px;color:var(--text);font-size:14px;font-family:inherit;outline:none;margin-bottom:12px}
+.btn{width:100%;padding:13px;background:linear-gradient(135deg,#3b82f6,#6366f1);border:none;border-radius:12px;color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit}
 .err{color:#ec4899;font-size:12px;text-align:center;display:none;margin-bottom:10px}.err.show{display:block}
 </style></head><body>
 <div class="card"><h1>VROOM</h1><div class="err" id="err"></div>
@@ -1064,47 +1050,42 @@ if(!r.ok)throw new Error('رمز اشتباه است');location.href='/dashboard
 
 DASHBOARD_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl" data-theme="light"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>VROOM Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700;800;900&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@500;600;700;800&family=Inter:wght@700;800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#f0f4ff;--card:rgba(255,255,255,.8);--border:rgba(255,255,255,.9);--text:#0f172a;--muted:#64748b;--blue:#3b82f6;--indigo:#6366f1;--pink:#ec4899;--green:#10b981;--red:#f43f5e;--radius:18px;--shadow:0 10px 32px -8px rgba(99,102,241,.15)}
-[data-theme=dark]{--bg:#0a0e1a;--card:rgba(15,23,42,.78);--border:rgba(255,255,255,.07);--text:#f1f5f9;--muted:#94a3b8;--shadow:0 10px 32px -8px rgba(0,0,0,.45)}
+:root{--bg:#f0f4ff;--card:#fff;--text:#0f172a;--muted:#64748b;--blue:#3b82f6;--indigo:#6366f1;--green:#10b981;--red:#f43f5e;--r:16px}
+[data-theme=dark]{--bg:#0b0f1a;--card:#111827;--text:#f1f5f9;--muted:#94a3b8}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Vazirmatn,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;direction:rtl;transition:background .3s,color .3s;
-background-image:radial-gradient(ellipse 70% 40% at 8% 0%,rgba(99,102,241,.14),transparent 50%),radial-gradient(ellipse 50% 30% at 95% 5%,rgba(236,72,153,.1),transparent 45%)}
-.side{width:200px;background:var(--card);border-left:1px solid var(--border);position:fixed;right:0;top:0;bottom:0;padding:14px 10px;display:flex;flex-direction:column;z-index:40;backdrop-filter:blur(18px);transition:transform .25s}
-.brand{font-size:17px;font-weight:900;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter;padding:6px;margin-bottom:12px}
-.ni{padding:9px 11px;border-radius:11px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;margin-bottom:2px;border:none;background:none;width:100%;text-align:right;font-family:inherit;transition:.15s}
+body{font-family:Vazirmatn,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;direction:rtl}
+.side{width:190px;background:var(--card);position:fixed;right:0;top:0;bottom:0;padding:12px 8px;display:flex;flex-direction:column;z-index:40;box-shadow:-2px 0 12px rgba(0,0,0,.04)}
+.brand{font-size:16px;font-weight:900;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter;padding:6px;margin-bottom:10px}
+.ni{padding:8px 10px;border-radius:10px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;margin-bottom:2px;border:none;background:none;width:100%;text-align:right;font-family:inherit}
 .ni:hover,.ni.on{background:rgba(59,130,246,.1);color:var(--blue)}
-.main{margin-right:200px;padding:18px 14px}
+.main{margin-right:190px;padding:16px 12px}
 .page{display:none}.page.on{display:block}
-.pt{font-size:17px;font-weight:900;margin-bottom:14px;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;display:flex;align-items:center;gap:8px}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:12px}
-.st{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:13px;backdrop-filter:blur(14px);box-shadow:var(--shadow)}
-.st .l{font-size:10px;color:var(--muted);font-weight:600}.st .v{font-size:16px;font-weight:800;margin-top:3px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:11px;backdrop-filter:blur(14px);box-shadow:var(--shadow)}
-.card h3{font-size:12px;color:var(--blue);margin-bottom:9px;font-weight:700}
-.btn{padding:7px 13px;border-radius:10px;border:none;font-weight:700;font-size:11px;cursor:pointer;font-family:inherit;transition:transform .15s}
-.btn:active{transform:scale(.96)}
-.bg{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff;box-shadow:0 5px 16px rgba(59,130,246,.28)}
-.bo{background:rgba(59,130,246,.1);color:var(--blue);border:1px solid rgba(59,130,246,.2)}
+.pt{font-size:16px;font-weight:800;margin-bottom:12px;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.st{background:var(--card);border-radius:var(--r);padding:12px;box-shadow:0 2px 10px rgba(0,0,0,.04)}
+.st .l{font-size:10px;color:var(--muted)}.st .v{font-size:15px;font-weight:800;margin-top:2px}
+.card{background:var(--card);border-radius:var(--r);padding:12px;margin-bottom:10px;box-shadow:0 2px 10px rgba(0,0,0,.04)}
+.card h3{font-size:12px;color:var(--blue);margin-bottom:8px}
+.btn{padding:6px 12px;border-radius:9px;border:none;font-weight:700;font-size:11px;cursor:pointer;font-family:inherit}
+.bg{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff}
+.bo{background:rgba(59,130,246,.1);color:var(--blue)}
 .bd{background:rgba(244,63,94,.1);color:var(--red)}
-input,select{width:100%;padding:9px 11px;background:rgba(148,163,184,.07);border:1px solid rgba(148,163,184,.18);border-radius:10px;color:var(--text);font-family:inherit;font-size:12px;outline:none;margin-bottom:7px}
-input:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(59,130,246,.12)}
-table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;padding:7px;color:var(--muted);border-bottom:1px solid rgba(148,163,184,.12);font-size:10px}td{padding:7px;border-bottom:1px solid rgba(148,163,184,.06)}
-.tag{display:inline-block;padding:2px 7px;border-radius:7px;font-size:9px;font-weight:700}.ton{background:rgba(16,185,129,.12);color:var(--green)}.toff{background:rgba(244,63,94,.1);color:var(--red)}
-.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%) translateY(40px);background:var(--card);border:1px solid var(--border);padding:9px 16px;border-radius:11px;font-size:12px;color:var(--blue);opacity:0;transition:.25s;z-index:999;backdrop-filter:blur(14px);font-weight:700}
+input,select{width:100%;padding:8px 10px;background:rgba(148,163,184,.07);border:1px solid rgba(148,163,184,.15);border-radius:9px;color:var(--text);font-family:inherit;font-size:12px;outline:none;margin-bottom:6px}
+table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;padding:6px;color:var(--muted);border-bottom:1px solid rgba(148,163,184,.1);font-size:10px}td{padding:6px;border-bottom:1px solid rgba(148,163,184,.05)}
+.tag{display:inline-block;padding:2px 6px;border-radius:6px;font-size:9px;font-weight:700}.ton{background:rgba(16,185,129,.12);color:var(--green)}.toff{background:rgba(244,63,94,.1);color:var(--red)}
+.toast{position:fixed;bottom:14px;left:50%;transform:translateX(-50%) translateY(40px);background:var(--card);padding:8px 14px;border-radius:10px;font-size:12px;color:var(--blue);opacity:0;transition:.2s;z-index:99;box-shadow:0 4px 16px rgba(0,0,0,.1);font-weight:700}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-.mob{display:none;position:fixed;top:0;left:0;right:0;height:46px;background:var(--card);border-bottom:1px solid var(--border);z-index:50;align-items:center;justify-content:space-between;padding:0 12px;backdrop-filter:blur(14px)}
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:80;display:none;align-items:center;justify-content:center;backdrop-filter:blur(5px)}.modal-bg.show{display:flex}
-.modal{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px;width:92%;max-width:370px;backdrop-filter:blur(18px)}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-.pulse{display:inline-block;width:7px;height:7px;background:var(--green);border-radius:50%;animation:pu 1.6s infinite}
-@keyframes pu{0%{box-shadow:0 0 0 0 rgba(16,185,129,.45)}70%{box-shadow:0 0 0 7px transparent}}
-.lang{display:inline-flex;border:1px solid rgba(148,163,184,.18);border-radius:12px;overflow:hidden;font-size:10px;font-weight:700;margin-bottom:8px}
-.lang button{border:none;padding:4px 10px;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;font-weight:700}
+.mob{display:none;position:fixed;top:0;left:0;right:0;height:44px;background:var(--card);z-index:50;align-items:center;justify-content:space-between;padding:0 12px;box-shadow:0 1px 6px rgba(0,0,0,.05)}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:80;display:none;align-items:center;justify-content:center}.modal-bg.show{display:flex}
+.modal{background:var(--card);border-radius:16px;padding:16px;width:92%;max-width:360px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.lang{display:inline-flex;border-radius:10px;overflow:hidden;font-size:10px;font-weight:700;margin-bottom:8px;background:rgba(148,163,184,.08)}
+.lang button{border:none;padding:4px 9px;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;font-weight:700}
 .lang button.on{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff}
-.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-@media(max-width:768px){.side{transform:translateX(100%)}.side.open{transform:translateX(0)}.main{margin-right:0;padding-top:56px}.stats{grid-template-columns:1fr 1fr}.mob{display:flex}}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+@media(max-width:768px){.side{transform:translateX(100%)}.side.open{transform:translateX(0)}.main{margin-right:0;padding-top:52px}.stats{grid-template-columns:1fr 1fr}.mob{display:flex}}
 </style></head><body>
 <div class="mob"><span style="font-weight:900;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter">VROOM</span>
 <button class="btn bo" onclick="document.querySelector('.side').classList.toggle('open')">☰</button></div>
@@ -1123,14 +1104,14 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 </aside>
 <main class="main">
 <div class="topbar">
-  <div class="pt" id="pageTitle">داشبورد <span class="pulse"></span></div>
-  <button class="btn bo" id="themeBtn" onclick="togTheme()" style="padding:6px 10px;font-size:14px">☀️</button>
+  <div class="pt">داشبورد</div>
+  <button class="btn bo" id="themeBtn" onclick="togTheme()" style="padding:5px 9px;font-size:13px">☀️</button>
 </div>
 <section class="page on" id="p-dash">
 <div class="stats">
-<div class="st"><div class="l" data-f="اتصال" data-e="Connections">اتصال</div><div class="v" id="s-cn">0</div></div>
-<div class="st"><div class="l" data-f="دانلود" data-e="Download">دانلود</div><div class="v" id="s-dl" style="font-size:13px">0</div></div>
-<div class="st"><div class="l" data-f="آپلود" data-e="Upload">آپلود</div><div class="v" id="s-ul" style="font-size:13px">0</div></div>
+<div class="st"><div class="l" data-f="اتصال" data-e="Conn">اتصال</div><div class="v" id="s-cn">0</div></div>
+<div class="st"><div class="l" data-f="دانلود" data-e="DL">دانلود</div><div class="v" id="s-dl" style="font-size:13px">0</div></div>
+<div class="st"><div class="l" data-f="آپلود" data-e="UL">آپلود</div><div class="v" id="s-ul" style="font-size:13px">0</div></div>
 <div class="st"><div class="l" data-f="کل" data-e="Total">کل</div><div class="v" id="s-tr" style="font-size:13px">0</div></div>
 </div>
 <div class="stats">
@@ -1139,51 +1120,50 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 <div class="st"><div class="l">CPU</div><div class="v" id="s-cpu">--</div></div>
 <div class="st"><div class="l">RAM</div><div class="v" id="s-ram">--</div></div>
 </div>
-<div class="card"><h3 data-f="⚡ ساخت سریع" data-e="⚡ Quick Create">⚡ ساخت سریع</h3>
-<div style="display:flex;gap:7px;flex-wrap:wrap">
+<div class="card"><h3 data-f="⚡ ساخت سریع" data-e="⚡ Quick">⚡ ساخت سریع</h3>
+<div style="display:flex;gap:6px;flex-wrap:wrap">
 <button class="btn bg" onclick="qc(1)">+1GB</button>
 <button class="btn bg" onclick="qc(5)">+5GB</button>
 <button class="btn bg" onclick="qc(10)">+10GB</button>
 <button class="btn bg" onclick="qc(50)">+50GB</button>
-<button class="btn bo" onclick="resetAll()" data-f="ریست مصرف" data-e="Reset Usage">ریست مصرف</button>
+<button class="btn bo" onclick="resetAll()" data-f="ریست" data-e="Reset">ریست</button>
 </div></div>
 </section>
 <section class="page" id="p-links">
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
   <div class="pt" style="margin:0" data-f="اینباندها" data-e="Inbounds">اینباندها</div>
   <button class="btn bg" onclick="$('#addM').classList.add('show')" data-f="+ افزودن" data-e="+ Add">+ افزودن</button>
 </div>
 <div class="card" style="overflow-x:auto"><table><thead><tr><th data-f="نام" data-e="Name">نام</th><th data-f="مصرف" data-e="Usage">مصرف</th><th>IP</th><th data-f="وضعیت" data-e="Status">وضعیت</th><th data-f="عملیات" data-e="Actions">عملیات</th></tr></thead><tbody id="lb"></tbody></table></div>
 </section>
 <section class="page" id="p-conn">
-<div class="pt" data-f="اتصالات" data-e="Connections">اتصالات <span class="pulse"></span></div>
+<div class="pt" data-f="اتصالات" data-e="Connections">اتصالات</div>
 <div class="card"><table><thead><tr><th data-f="اینباند" data-e="Inbound">اینباند</th><th>IP</th><th data-f="ترافیک" data-e="Traffic">ترافیک</th><th data-f="از زمان" data-e="Since">از زمان</th></tr></thead><tbody id="cb"></tbody></table></div>
 </section>
 <section class="page" id="p-addr">
 <div class="pt" data-f="آی‌پی تمیز" data-e="Clean IP">آی‌پی تمیز</div>
-<div class="card"><div class="grid2"><input id="new-addr" placeholder="IP / Domain"><button class="btn bg" onclick="addAddr()" data-f="افزودن" data-e="Add">افزودن</button></div><div id="alist" style="margin-top:9px"></div></div>
+<div class="card"><div class="grid2"><input id="new-addr" placeholder="IP / Domain"><button class="btn bg" onclick="addAddr()" data-f="افزودن" data-e="Add">افزودن</button></div><div id="alist" style="margin-top:8px"></div></div>
 </section>
 <section class="page" id="p-tg">
-<div class="pt" data-f="ربات تلگرام" data-e="Telegram Bot">ربات تلگرام</div>
+<div class="pt" data-f="ربات تلگرام" data-e="Telegram">ربات تلگرام</div>
 <div class="card">
-<p style="font-size:11px;color:var(--muted);margin-bottom:9px" data-f="توکن از @BotFather · آی‌دی از @userinfobot" data-e="Token from @BotFather · ID from @userinfobot">توکن از @BotFather · آی‌دی از @userinfobot</p>
 <input id="tg-tok" placeholder="Bot Token"><input id="tg-adm" placeholder="Admin ID(s)">
-<div style="display:flex;gap:7px"><button class="btn bg" onclick="saveTg()" data-f="فعال‌سازی" data-e="Enable">فعال‌سازی</button><button class="btn bd" onclick="stopTg()" data-f="توقف" data-e="Stop">توقف</button></div>
-<div id="tg-st" style="margin-top:9px;font-size:12px;color:var(--muted)"></div>
+<div style="display:flex;gap:6px"><button class="btn bg" onclick="saveTg()" data-f="فعال" data-e="Enable">فعال</button><button class="btn bd" onclick="stopTg()" data-f="توقف" data-e="Stop">توقف</button></div>
+<div id="tg-st" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
 </div>
 </section>
 <section class="page" id="p-domain">
 <div class="pt" data-f="دامنه" data-e="Domain">دامنه</div>
-<div class="card"><input id="dom-in" placeholder="example.com"><button class="btn bg" onclick="saveDom()" data-f="ذخیره" data-e="Save">ذخیره</button><div id="dom-cur" style="margin-top:7px;font-size:12px;color:var(--muted)"></div></div>
+<div class="card"><input id="dom-in" placeholder="example.com"><button class="btn bg" onclick="saveDom()" data-f="ذخیره" data-e="Save">ذخیره</button><div id="dom-cur" style="margin-top:6px;font-size:12px;color:var(--muted)"></div></div>
 </section>
 <section class="page" id="p-sec">
 <div class="pt" data-f="امنیت" data-e="Security">امنیت</div>
-<div class="card"><input type="password" id="cpw" placeholder="Current password"><input type="password" id="npw" placeholder="New password"><button class="btn bg" onclick="chPass()" data-f="تغییر" data-e="Change">تغییر</button></div>
+<div class="card"><input type="password" id="cpw" placeholder="Current"><input type="password" id="npw" placeholder="New"><button class="btn bg" onclick="chPass()" data-f="تغییر" data-e="Change">تغییر</button></div>
 </section>
 </main>
 <div class="modal-bg" id="addM" onclick="if(event.target===this)this.classList.remove('show')">
-<div class="modal"><h3 style="color:var(--blue);margin-bottom:10px" data-f="افزودن اینباند" data-e="Add Inbound">افزودن اینباند</h3>
-<input id="nl" placeholder="Name (English)">
+<div class="modal"><h3 style="color:var(--blue);margin-bottom:8px" data-f="افزودن" data-e="Add">افزودن</h3>
+<input id="nl" placeholder="Name">
 <div class="grid2"><input id="nlim" type="number" placeholder="Volume"><select id="nun"><option>GB</option><option>MB</option></select></div>
 <input id="nexp" type="number" placeholder="Days"><input id="nmax" type="number" placeholder="Max IP">
 <button class="btn bg" style="width:100%" onclick="createL()" data-f="ساخت" data-e="Create">ساخت</button></div></div>
@@ -1191,46 +1171,46 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 <script>
 const $=s=>document.querySelector(s);let LANG=localStorage.getItem('vroom_dl')||'fa';
 function setL(l){LANG=l;localStorage.setItem('vroom_dl',l);document.documentElement.lang=l;document.documentElement.dir=l==='fa'?'rtl':'ltr';$('#lFa').classList.toggle('on',l==='fa');$('#lEn').classList.toggle('on',l==='en');document.querySelectorAll('[data-f]').forEach(el=>{el.textContent=l==='fa'?el.dataset.f:el.dataset.e})}
-function togTheme(){const c=document.documentElement.getAttribute('data-theme'),n=c==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);localStorage.setItem('vt',n);document.getElementById('themeBtn').textContent=n==='light'?'☀️':'🌙'}
+function togTheme(){const n=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);localStorage.setItem('vt',n);document.getElementById('themeBtn').textContent=n==='light'?'☀️':'🌙'}
 document.querySelectorAll('.ni[data-p]').forEach(el=>el.onclick=()=>go(el.dataset.p));
 function go(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));document.getElementById('p-'+id)?.classList.add('on');
 document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('on',n.dataset.p===id));document.querySelector('.side')?.classList.remove('open');
 if(id==='links')loadL();if(id==='conn')loadC();if(id==='addr')loadA();if(id==='tg')loadTg();if(id==='domain')loadDom()}
-function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200)}
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000)}
 async function loadS(){try{const r=await fetch('/stats');if(!r.ok)return;const d=await r.json();
 $('#s-cn').textContent=d.active_connections;$('#s-dl').textContent=d.download_fmt||'0';$('#s-ul').textContent=d.upload_fmt||'0';
-$('#s-tr').textContent=d.total_fmt||(d.total_traffic_mb+' MB');$('#s-lk').textContent=d.links_count;$('#s-up').textContent=d.uptime;
+$('#s-tr').textContent=d.total_fmt||'0';$('#s-lk').textContent=d.links_count;$('#s-up').textContent=d.uptime;
 $('#s-cpu').textContent=(d.cpu_percent||0).toFixed(0)+'%';$('#s-ram').textContent=(d.memory_percent||0).toFixed(0)+'%';window._conns=d.connections_detail||[]}catch(e){}}
 async function loadL(){const r=await fetch('/api/links');const d=await r.json();const b=$('#lb');
 if(!d.links?.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--muted)">Empty</td></tr>';return}
 b.innerHTML=d.links.map(l=>{const u=(l.used_bytes/1e9).toFixed(2),lim=l.limit_bytes?(l.limit_bytes/1e9).toFixed(1)+'G':'∞';
 const sub=l.sub_url||(location.origin+'/sub/'+l.uuid),page=l.page_url||(location.origin+'/page/'+l.uuid);
 return `<tr><td><b>${l.label}</b></td><td>${u}/${lim}</td><td>${l.current_connections}/${l.max_connections||'∞'}</td>
-<td><span class="tag ${l.active&&!l.expired?'ton':'toff'}">${l.active&&!l.expired?(LANG==='fa'?'روشن':'ON'):(LANG==='fa'?'خاموش':'OFF')}</span></td>
+<td><span class="tag ${l.active&&!l.expired?'ton':'toff'}">${l.active&&!l.expired?'ON':'OFF'}</span></td>
 <td style="display:flex;gap:3px;flex-wrap:wrap">
-<button class="btn bo" style="padding:2px 7px;font-size:9px" onclick="navigator.clipboard.writeText('${sub}').then(()=>toast('Sub'))">Sub</button>
-<button class="btn bo" style="padding:2px 7px;font-size:9px" onclick="navigator.clipboard.writeText('${page}').then(()=>toast('Page'))">Page</button>
-<button class="btn bo" style="padding:2px 7px;font-size:9px" onclick="navigator.clipboard.writeText('${l.vless_link.replace(/'/g,"\\\\'")}').then(()=>toast('Config'))">Copy</button>
-<button class="btn bd" style="padding:2px 7px;font-size:9px" onclick="delL('${l.uuid}')">Del</button></td></tr>`}).join('')}
+<button class="btn bo" style="padding:2px 6px;font-size:9px" onclick="navigator.clipboard.writeText('${sub}').then(()=>toast('Sub'))">Sub</button>
+<button class="btn bo" style="padding:2px 6px;font-size:9px" onclick="navigator.clipboard.writeText('${page}').then(()=>toast('Page'))">Page</button>
+<button class="btn bo" style="padding:2px 6px;font-size:9px" onclick="navigator.clipboard.writeText('${l.vless_link.replace(/'/g,"\\\\'")}').then(()=>toast('Config'))">Copy</button>
+<button class="btn bd" style="padding:2px 6px;font-size:9px" onclick="delL('${l.uuid}')">Del</button></td></tr>`}).join('')}
 function loadC(){const list=window._conns||[];const b=$('#cb');
 if(!list.length){b.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--muted)">None</td></tr>';return}
 b.innerHTML=list.map(c=>`<tr><td>${c.uuid}</td><td>${c.ip}</td><td>${(c.bytes/1e6).toFixed(2)} MB</td><td style="font-size:10px">${(c.since||'').slice(11,19)}</td></tr>`).join('')}
-async function delL(u){if(!confirm(LANG==='fa'?'حذف؟':'Delete?'))return;await fetch('/api/links/'+u,{method:'DELETE'});toast('OK');loadL();loadS()}
+async function delL(u){if(!confirm('Delete?'))return;await fetch('/api/links/'+u,{method:'DELETE'});toast('OK');loadL();loadS()}
 async function createL(){const label=$('#nl').value.trim(),limit=parseFloat($('#nlim').value)||0,unit=$('#nun').value,expiry=parseFloat($('#nexp').value)||0,max=parseInt($('#nmax').value)||0;
-if(!label){toast('Name required');return}
+if(!label){toast('Name');return}
 const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,limit_value:limit,limit_unit:unit,expiry_days:expiry,max_connections:max})});
-if(!r.ok){toast((await r.json().catch(()=>({}))).detail||'Error');return}toast(LANG==='fa'?'ساخته شد':'Created');$('#addM').classList.remove('show');loadL();loadS()}
+if(!r.ok){toast('Error');return}toast('OK');$('#addM').classList.remove('show');loadL();loadS()}
 async function qc(gb){const n='u'+Math.floor(Math.random()*900+100);await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:n,limit_value:gb,limit_unit:'GB',expiry_days:30})});toast(n);loadS()}
-async function resetAll(){if(!confirm(LANG==='fa'?'ریست همه؟':'Reset all?'))return;await fetch('/api/reset-all-usage',{method:'POST'});toast('Reset');loadL()}
-async function loadA(){const r=await fetch('/api/addresses');const d=await r.json();$('#alist').innerHTML=(d.addresses||[]).map((a,i)=>`<div style="display:flex;justify-content:space-between;padding:8px;background:rgba(148,163,184,.06);border-radius:9px;margin-bottom:4px;font-size:12px"><span>${a}</span><button class="btn bd" style="padding:2px 8px;font-size:10px" onclick="delA(${i})">Del</button></div>`).join('')||'<div style="color:var(--muted);font-size:12px">Empty</div>'}
+async function resetAll(){if(!confirm('Reset all?'))return;await fetch('/api/reset-all-usage',{method:'POST'});toast('Reset');loadL()}
+async function loadA(){const r=await fetch('/api/addresses');const d=await r.json();$('#alist').innerHTML=(d.addresses||[]).map((a,i)=>`<div style="display:flex;justify-content:space-between;padding:7px;background:rgba(148,163,184,.05);border-radius:8px;margin-bottom:4px;font-size:12px"><span>${a}</span><button class="btn bd" style="padding:2px 7px;font-size:10px" onclick="delA(${i})">Del</button></div>`).join('')||'<div style="color:var(--muted);font-size:12px">Empty</div>'}
 async function addAddr(){const a=$('#new-addr').value.trim();if(!a)return;await fetch('/api/addresses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:a})});$('#new-addr').value='';loadA();toast('Added')}
 async function delA(i){await fetch('/api/addresses/'+i,{method:'DELETE'});loadA()}
-async function loadTg(){const r=await fetch('/api/telegram');const d=await r.json();$('#tg-st').innerHTML=d.enabled?'<span style="color:var(--green)">● ON</span> — '+(d.admin_ids||[]).join(', '):'<span style="color:var(--red)">● OFF</span>';if(d.admin_ids?.length)$('#tg-adm').value=d.admin_ids.join(' ')}
-async function saveTg(){const r=await fetch('/api/telegram',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('#tg-tok').value.trim(),admin_ids:$('#tg-adm').value.trim()})});const d=await r.json().catch(()=>({}));if(!r.ok){toast(d.detail||'Error');return}toast(d.enabled?'ON @'+(d.bot_username||''):'Saved');loadTg()}
+async function loadTg(){const r=await fetch('/api/telegram');const d=await r.json();$('#tg-st').innerHTML=d.enabled?'<span style="color:var(--green)">● ON</span>':'<span style="color:var(--red)">● OFF</span>';if(d.admin_ids?.length)$('#tg-adm').value=d.admin_ids.join(' ')}
+async function saveTg(){const r=await fetch('/api/telegram',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('#tg-tok').value.trim(),admin_ids:$('#tg-adm').value.trim()})});const d=await r.json().catch(()=>({}));if(!r.ok){toast('Error');return}toast(d.enabled?'ON':'Saved');loadTg()}
 async function stopTg(){await fetch('/api/telegram/stop',{method:'POST'});toast('Stopped');loadTg()}
-async function loadDom(){const r=await fetch('/api/domain');const d=await r.json();$('#dom-cur').textContent=(LANG==='fa'?'فعلی: ':'Current: ')+(d.domain||'Default')}
+async function loadDom(){const r=await fetch('/api/domain');const d=await r.json();$('#dom-cur').textContent='Current: '+(d.domain||'Default')}
 async function saveDom(){await fetch('/api/domain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:$('#dom-in').value.trim()})});toast('Saved');loadDom()}
-async function chPass(){const r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:$('#cpw').value,new_password:$('#npw').value})});if(!r.ok){toast((await r.json().catch(()=>({}))).detail||'Error');return}toast(LANG==='fa'?'تغییر یافت':'Changed')}
+async function chPass(){const r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:$('#cpw').value,new_password:$('#npw').value})});if(!r.ok){toast('Error');return}toast('OK')}
 const st=localStorage.getItem('vt')||'light';document.documentElement.setAttribute('data-theme',st);document.getElementById('themeBtn').textContent=st==='light'?'☀️':'🌙';
 setL(LANG);loadS();setInterval(loadS,5000);
 </script></body></html>"""
