@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VROOM Panel v5.4 - Lag Fixed (No features removed)
+VROOM Panel v5.5 - Zero Lag + Full Glow + Design Preserved
 """
 import asyncio, json, os, hashlib, secrets, time, re, base64
 from datetime import datetime, timedelta
@@ -27,7 +27,7 @@ logger = logging.getLogger("VROOM")
 async def lifespan(app: FastAPI):
     global http_client
     http_client = httpx.AsyncClient(limits=httpx.Limits(max_connections=5000, max_keepalive_connections=1000), timeout=httpx.Timeout(180.0, connect=30.0), follow_redirects=True)
-    logger.info(f"🚀 VROOM v5.4 :{CONFIG['port']}")
+    logger.info(f"🚀 VROOM v5.5 :{CONFIG['port']}")
     asyncio.create_task(keep_alive())
     if TELEGRAM.get("token") and TELEGRAM.get("admin_ids"):
         TELEGRAM["enabled"] = True
@@ -191,7 +191,7 @@ async def build_sub_content(uid, link):
         lines.append(generate_vless_link(uid, remark=f"VROOM-{link['label']}-{i+1}", address=addr))
     return "\n".join(lines)
 
-# ===================== TELEGRAM (unchanged) =====================
+# ===================== TELEGRAM =====================
 def ikb(rows):
     return {"inline_keyboard": [[{"text": t, "callback_data": c} for t, c in row] for row in rows]}
 
@@ -459,7 +459,7 @@ async def start_telegram_bot():
 # ===================== API =====================
 @app.get("/")
 async def root():
-    return {"service": "VROOM", "version": "5.4", "domain": get_domain()}
+    return {"service": "VROOM", "version": "5.5", "domain": get_domain()}
 
 @app.get("/health")
 async def health():
@@ -696,7 +696,7 @@ async def subscription_raw(uid: str, request: Request):
         return Response(content=_b64.b64encode(raw.encode()).decode(), media_type="text/plain; charset=utf-8", headers=headers)
     return Response(content=raw, media_type="text/plain; charset=utf-8", headers=headers)
 
-# ===================== PAGE (Optimized, design kept) =====================
+# ===================== PAGE (Zero Lag + Full Glow) =====================
 @app.get("/page/{uid}")
 async def subscription_page(uid: str):
     async with LINKS_LOCK:
@@ -735,9 +735,9 @@ async def subscription_page(uid: str):
     qr_data = quote(server_link, safe="")
     live_conns = count_connections_for_link(uid)
 
-    # Pre-render progress (no JS lag)
-    ring_style = f"background:conic-gradient(#3b82f6 0% {percent}%,#e2e8f0 {percent}% 100%)"
-    bar_style = f"width:{percent}%"
+    # Pre-rendered (zero JS lag)
+    ring_bg = f"conic-gradient(#3b82f6 0% {percent}%, #e2e8f0 {percent}% 100%)"
+    bar_w = f"{percent}%"
 
     html = f"""<!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="light">
@@ -747,61 +747,125 @@ async def subscription_page(uid: str):
 <title>VROOM — {link['label']}</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;700;800&family=Vazirmatn:wght@500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
-:root{{--bg:#f0f4ff;--card:rgba(255,255,255,.82);--border:rgba(255,255,255,.9);--text:#0f172a;--muted:#64748b;--blue:#3b82f6;--indigo:#6366f1;--pink:#ec4899;--green:#10b981;--r:22px;--shadow:0 8px 32px rgba(99,102,241,.12)}}
-[data-theme=dark]{{--bg:#0a0e1a;--card:rgba(15,23,42,.8);--border:rgba(255,255,255,.08);--text:#f1f5f9;--muted:#94a3b8;--shadow:0 8px 32px rgba(0,0,0,.4)}}
+:root{{
+  --bg:#eef2ff;--card:rgba(255,255,255,.78);--border:rgba(255,255,255,.85);
+  --text:#0f172a;--muted:#64748b;--blue:#3b82f6;--indigo:#6366f1;--pink:#ec4899;--green:#10b981;
+  --r:22px;--shadow:0 10px 40px -8px rgba(99,102,241,.18);--glow:0 0 24px rgba(59,130,246,.35);
+}}
+[data-theme=dark]{{
+  --bg:#0a0e1a;--card:rgba(15,23,42,.78);--border:rgba(255,255,255,.08);
+  --text:#f1f5f9;--muted:#94a3b8;--shadow:0 10px 40px -8px rgba(0,0,0,.5);--glow:0 0 28px rgba(59,130,246,.25);
+}}
 *{{margin:0;padding:0;box-sizing:border-box}}
-body{{font-family:Vazirmatn,Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:14px 12px 32px;transition:background .25s}}
-body::before{{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgba(99,102,241,.18),transparent 55%),radial-gradient(ellipse 60% 40% at 95% 5%,rgba(236,72,153,.12),transparent 50%)}}
-.w{{max-width:430px;margin:0 auto;position:relative;z-index:1}}
-.hdr{{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}}
+body{{
+  font-family:Vazirmatn,Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);
+  min-height:100vh;padding:14px 12px 36px;transition:background .25s;overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}}
+body::before{{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(ellipse 90% 55% at 8% -8%,rgba(99,102,241,.22),transparent 55%),
+             radial-gradient(ellipse 70% 45% at 96% 0%,rgba(236,72,153,.16),transparent 50%);
+}}
+[data-theme=dark] body::before{{
+  background:radial-gradient(ellipse 90% 55% at 8% -8%,rgba(99,102,241,.16),transparent 55%),
+             radial-gradient(ellipse 70% 45% at 96% 0%,rgba(236,72,153,.1),transparent 50%);
+}}
+.w{{max-width:430px;margin:0 auto;position:relative;z-index:1;will-change:transform}}
+.hdr{{display:flex;align-items:center;justify-content:space-between;margin-bottom:15px}}
 .hdr-l{{display:flex;gap:8px;align-items:center}}
-.ib{{width:38px;height:38px;border-radius:13px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;box-shadow:var(--shadow);backdrop-filter:blur(12px)}}
-.ls{{display:flex;background:var(--card);border:1px solid var(--border);border-radius:13px;overflow:hidden;box-shadow:var(--shadow);backdrop-filter:blur(12px)}}
+.ib{{
+  width:38px;height:38px;border-radius:13px;background:var(--card);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;
+  box-shadow:var(--shadow);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  transition:transform .15s;
+}}
+.ib:active{{transform:scale(.94)}}
+.ls{{
+  display:flex;background:var(--card);border:1px solid var(--border);border-radius:13px;
+  overflow:hidden;box-shadow:var(--shadow);backdrop-filter:blur(14px);
+}}
 .ls button{{border:none;padding:7px 11px;font-size:11px;font-weight:700;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit}}
 .ls button.on{{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff}}
-.logo{{font-family:Inter;font-weight:800;font-size:19px;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
-.card{{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:15px;margin-bottom:11px;box-shadow:var(--shadow);backdrop-filter:blur(16px)}}
+.logo{{
+  font-family:Inter;font-weight:800;font-size:19px;
+  background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}}
+.card{{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:15px;
+  margin-bottom:12px;box-shadow:var(--shadow);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  will-change:transform;
+}}
 .ct{{font-size:13px;font-weight:800;margin-bottom:11px;display:flex;justify-content:space-between;align-items:center}}
-.badge{{font-size:11px;color:var(--blue);background:rgba(59,130,246,.1);padding:2px 9px;border-radius:20px}}
-.sr{{display:flex;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:12px}}
+.badge{{font-size:11px;color:var(--blue);background:rgba(59,130,246,.12);padding:3px 10px;border-radius:20px}}
+.sr{{display:flex;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:13px}}
 .so{{color:var(--green);display:flex;align-items:center;gap:5px}}
-.dot{{width:7px;height:7px;border-radius:50%;background:var(--green)}}
+.dot{{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(16,185,129,.5);animation:pulse 1.8s infinite}}
+@keyframes pulse{{0%{{box-shadow:0 0 0 0 rgba(16,185,129,.5)}}70%{{box-shadow:0 0 0 8px transparent}}}}
 .sg{{display:grid;grid-template-columns:auto 1fr 1fr 1fr;gap:8px;align-items:center}}
 .st{{text-align:center}}.st .l{{font-size:10px;color:var(--muted)}}.st .v{{font-size:13px;font-weight:800}}
-.rw{{width:66px;height:66px}}
-.rg{{width:66px;height:66px;border-radius:50%;{ring_style};display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(59,130,246,.2)}}
-.ri{{width:50px;height:50px;border-radius:50%;background:var(--card);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}}
-.pb{{margin-top:11px;height:5px;background:rgba(148,163,184,.2);border-radius:99px;overflow:hidden}}
-.pf{{height:100%;{bar_style};background:linear-gradient(90deg,var(--blue),var(--pink));border-radius:99px}}
-.srow{{display:flex;gap:8px;align-items:center;background:rgba(148,163,184,.07);border-radius:13px;padding:7px 9px;margin-bottom:11px}}
+.rw{{width:68px;height:68px}}
+.rg{{
+  width:68px;height:68px;border-radius:50%;background:{ring_bg};
+  display:flex;align-items:center;justify-content:center;box-shadow:var(--glow);
+}}
+.ri{{width:52px;height:52px;border-radius:50%;background:var(--card);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}}
+.pb{{margin-top:12px;height:5px;background:rgba(148,163,184,.22);border-radius:99px;overflow:hidden}}
+.pf{{height:100%;width:{bar_w};background:linear-gradient(90deg,var(--blue),var(--pink));border-radius:99px;box-shadow:0 0 12px rgba(59,130,246,.4)}}
+.srow{{display:flex;gap:8px;align-items:center;background:rgba(148,163,184,.07);border-radius:14px;padding:7px 9px;margin-bottom:12px}}
 .surl{{flex:1;font-size:10px;font-family:monospace;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:left}}
-.cb{{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff;border:none;padding:8px 14px;border-radius:11px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(59,130,246,.3)}}
+.cb{{
+  background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff;border:none;
+  padding:8px 14px;border-radius:11px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;
+  box-shadow:0 6px 18px rgba(59,130,246,.35);transition:transform .15s;
+}}
+.cb:active{{transform:scale(.96)}}
 .ip{{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}}
 .pi{{background:rgba(148,163,184,.07);border-radius:13px;padding:9px 4px;text-align:center}}
 .pi .pl{{font-size:9px;color:var(--muted)}}.pi .pv{{font-size:12px;font-weight:800}}
-.cfg{{background:rgba(148,163,184,.07);border-radius:13px;padding:10px;font-size:9.5px;font-family:monospace;word-break:break-all;max-height:46px;overflow-y:auto;direction:ltr;text-align:left;color:var(--muted);margin-bottom:11px;cursor:pointer}}
-.qr-w{{display:flex;justify-content:center;margin-bottom:11px}}
-.qr{{width:118px;height:118px;background:#fff;border-radius:16px;padding:7px;box-shadow:0 6px 24px rgba(59,130,246,.18)}}
+.cfg{{
+  background:rgba(148,163,184,.07);border-radius:13px;padding:10px;font-size:9.5px;font-family:monospace;
+  word-break:break-all;max-height:46px;overflow-y:auto;direction:ltr;text-align:left;color:var(--muted);
+  margin-bottom:12px;cursor:pointer;
+}}
+.qr-w{{display:flex;justify-content:center;margin-bottom:12px}}
+.qr{{
+  width:120px;height:120px;background:#fff;border-radius:16px;padding:7px;
+  box-shadow:0 8px 28px rgba(59,130,246,.22);border:2px solid rgba(99,102,241,.15);
+}}
 .qr img{{width:100%;height:100%;border-radius:9px}}
 .ab{{display:flex;gap:8px}}
-.ab button{{flex:1;padding:12px;border:none;border-radius:13px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit}}
+.ab button{{flex:1;padding:12px;border:none;border-radius:13px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;transition:transform .15s}}
+.ab button:active{{transform:scale(.97)}}
 .bs{{background:rgba(148,163,184,.1);color:var(--text)}}
-.ba{{background:linear-gradient(135deg,var(--blue),var(--pink));color:#fff;box-shadow:0 6px 20px rgba(236,72,153,.28)}}
-.pr{{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:11px}}
-.pb2{{padding:7px 13px;border-radius:18px;border:none;background:rgba(148,163,184,.08);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}}
-.pb2.on{{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff;box-shadow:0 3px 12px rgba(59,130,246,.25)}}
+.ba{{background:linear-gradient(135deg,var(--blue),var(--pink));color:#fff;box-shadow:0 7px 22px rgba(236,72,153,.32)}}
+.pr{{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}}
+.pb2{{
+  padding:7px 13px;border-radius:18px;border:none;background:rgba(148,163,184,.08);
+  color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:transform .15s;
+}}
+.pb2.on{{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff;box-shadow:0 4px 14px rgba(59,130,246,.3)}}
 .ag{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}}
-.ac{{background:rgba(148,163,184,.05);border-radius:15px;padding:11px 4px;text-align:center;cursor:pointer}}
-.ai{{width:42px;height:42px;margin:0 auto 6px;border-radius:11px;background:linear-gradient(145deg,#e0e7ff,#fce7f3);display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden}}
+.ac{{background:rgba(148,163,184,.05);border-radius:15px;padding:11px 4px;text-align:center;cursor:pointer;transition:transform .15s}}
+.ac:active{{transform:scale(.96)}}
+.ai{{
+  width:42px;height:42px;margin:0 auto 6px;border-radius:11px;
+  background:linear-gradient(145deg,#e0e7ff,#fce7f3);display:flex;align-items:center;justify-content:center;
+  font-size:16px;overflow:hidden;box-shadow:0 3px 10px rgba(0,0,0,.06);
+}}
 [data-theme=dark] .ai{{background:linear-gradient(145deg,#1e293b,#312e81)}}
 .ai img{{width:100%;height:100%;object-fit:cover}}
 .an{{font-size:10px;font-weight:700}}.ah{{font-size:8px;color:var(--muted)}}
 .ft{{text-align:center;font-size:10px;color:var(--muted);margin-top:6px}}
 .ft b{{background:linear-gradient(135deg,var(--blue),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
-.toast{{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--card);padding:10px 18px;border-radius:12px;font-size:12px;font-weight:700;color:var(--blue);opacity:0;transition:.25s;z-index:99;box-shadow:var(--shadow);backdrop-filter:blur(12px)}}
+.toast{{
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(60px);
+  background:var(--card);padding:10px 18px;border-radius:12px;font-size:12px;font-weight:700;
+  color:var(--blue);opacity:0;transition:.25s;z-index:99;box-shadow:var(--shadow);backdrop-filter:blur(12px);
+}}
 .toast.show{{opacity:1;transform:translateX(-50%) translateY(0)}}
 #qrm{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);align-items:center;justify-content:center;z-index:100}}
-#qrm img{{width:min(78vw,290px);border-radius:18px}}
+#qrm img{{width:min(78vw,290px);border-radius:18px;box-shadow:0 0 50px rgba(59,130,246,.35)}}
 </style>
 </head>
 <body>
@@ -877,7 +941,18 @@ let L=localStorage.getItem("vl")||"fa";
 const C={{android:[["Hiddify","Hiddify","hiddify://import/"+encodeURIComponent(SUB)],["v2rayng","v2rayNG","v2rayng://install-config?url="+encodeURIComponent(SUB)],["v2box","V2Box","v2box://install-config?url="+encodeURIComponent(SUB)],["Happ","Happ","happ://import?url="+encodeURIComponent(SUB)]],ios:[["Hiddify","Hiddify","hiddify://import/"+encodeURIComponent(SUB)],["v2box","V2Box","v2box://install-config?url="+encodeURIComponent(SUB)],["Happ","Happ","happ://import?url="+encodeURIComponent(SUB)]],windows:[["Hiddify","Hiddify","hiddify://import/"+encodeURIComponent(SUB)],["v2rayn","v2rayN","v2rayN://import?url="+encodeURIComponent(SUB)]],macos:[["Hiddify","Hiddify","hiddify://import/"+encodeURIComponent(SUB)],["v2box","V2Box","v2box://install-config?url="+encodeURIComponent(SUB)]],linux:[["Hiddify","Hiddify","hiddify://import/"+encodeURIComponent(SUB)],["v2rayn","v2rayN","v2rayN://import?url="+encodeURIComponent(SUB)]]}};
 function setL(l){{L=l;localStorage.setItem("vl",l);document.documentElement.lang=l;document.documentElement.dir=l==="fa"?"rtl":"ltr";document.getElementById("bFa").classList.toggle("on",l==="fa");document.getElementById("bEn").classList.toggle("on",l==="en");document.querySelectorAll("[data-f]").forEach(e=>e.textContent=l==="fa"?e.dataset.f:e.dataset.e)}}
 function togTheme(){{const n=document.documentElement.getAttribute("data-theme")==="light"?"dark":"light";document.documentElement.setAttribute("data-theme",n);localStorage.setItem("vt",n);document.getElementById("th").textContent=n==="light"?"☀️":"🌙"}}
-function sp(btn){{document.querySelectorAll(".pb2").forEach(b=>b.classList.remove("on"));btn.classList.add("on");const p=btn.dataset.p;const list=C[p]||[];const g=document.getElementById("ag");g.innerHTML=list.map(([id,n])=>`<div class="ac" onclick="oa('${{id}}','${{p}}')"><div class="ai" id="ai-${{id}}">${{n[0]}}</div><div class="an">${{n}}</div><div class="ah">Tap to open</div></div>`).join("");list.forEach(([id])=>{{fetch("/api/app-photo/"+id).then(r=>r.json()).then(d=>{{if(d.url){{const el=document.getElementById("ai-"+id);if(el)el.innerHTML=`<img src="${{d.url}}" alt="" loading="lazy">`}}}}).catch(()=>{{}})}})}}
+function sp(btn){{
+  document.querySelectorAll(".pb2").forEach(b=>b.classList.remove("on"));
+  btn.classList.add("on");
+  const p=btn.dataset.p,list=C[p]||[],g=document.getElementById("ag");
+  g.innerHTML=list.map(([id,n])=>`<div class="ac" onclick="oa('${{id}}','${{p}}')"><div class="ai" id="ai-${{id}}">${{n[0]}}</div><div class="an">${{n}}</div><div class="ah">Tap to open</div></div>`).join("");
+  // non-blocking photo load
+  list.forEach(([id])=>{{
+    fetch("/api/app-photo/"+id).then(r=>r.json()).then(d=>{{
+      if(d.url){{const el=document.getElementById("ai-"+id);if(el)el.innerHTML=`<img src="${{d.url}}" alt="" loading="lazy">`}}
+    }}).catch(()=>{{}});
+  }});
+}}
 function oa(id,p){{const a=(C[p]||[]).find(x=>x[0]===id);if(!a)return;try{{location.href=a[2]}}catch(e){{}}setTimeout(()=>{{cp(SUB);toast(L==="fa"?"لینک ساب کپی شد":"Sub link copied")}},1100)}}
 function share(){{if(navigator.share)navigator.share({{title:"VROOM",url:SUB}}).catch(()=>cp(SUB));else cp(SUB)}}
 function cp(t){{navigator.clipboard?navigator.clipboard.writeText(t).then(()=>toast(L==="fa"?"کپی شد ✅":"Copied ✅")):(()=>{{const i=document.createElement("input");i.value=t;document.body.appendChild(i);i.select();document.execCommand("copy");document.body.removeChild(i);toast(L==="fa"?"کپی شد ✅":"Copied ✅")}})()}}
@@ -1027,7 +1102,7 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
 LOGIN_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl" data-theme="light"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VROOM</title>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@700;900&family=Inter:wght@800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#f0f4ff;--card:rgba(255,255,255,.85);--text:#0f172a;--blue:#3b82f6}
+:root{--bg:#eef2ff;--card:rgba(255,255,255,.85);--text:#0f172a;--blue:#3b82f6}
 [data-theme=dark]{--bg:#0a0e1a;--card:rgba(15,23,42,.85);--text:#f1f5f9}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:Vazirmatn,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);direction:rtl}
@@ -1050,7 +1125,7 @@ DASHBOARD_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl" data-theme="light">
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>VROOM Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@500;600;700;800&family=Inter:wght@700;800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#f0f4ff;--card:rgba(255,255,255,.85);--text:#0f172a;--muted:#64748b;--blue:#3b82f6;--indigo:#6366f1;--green:#10b981;--red:#f43f5e;--r:16px;--shadow:0 4px 20px rgba(0,0,0,.05)}
+:root{--bg:#eef2ff;--card:rgba(255,255,255,.85);--text:#0f172a;--muted:#64748b;--blue:#3b82f6;--indigo:#6366f1;--green:#10b981;--red:#f43f5e;--r:16px;--shadow:0 4px 20px rgba(0,0,0,.05)}
 [data-theme=dark]{--bg:#0a0e1a;--card:rgba(15,23,42,.85);--text:#f1f5f9;--muted:#94a3b8;--shadow:0 4px 20px rgba(0,0,0,.3)}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:Vazirmatn,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;direction:rtl}
