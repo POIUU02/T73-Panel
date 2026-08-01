@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VROOM Panel v5.6 - Soft & Smooth (Zero Lag)
+VROOM Panel v5.7 - Quota Enforced (Volume finished = blocked)
 """
 import asyncio, json, os, hashlib, secrets, time, re, base64
 from datetime import datetime, timedelta
@@ -27,7 +27,7 @@ logger = logging.getLogger("VROOM")
 async def lifespan(app: FastAPI):
     global http_client
     http_client = httpx.AsyncClient(limits=httpx.Limits(max_connections=5000, max_keepalive_connections=1000), timeout=httpx.Timeout(180.0, connect=30.0), follow_redirects=True)
-    logger.info(f"🚀 VROOM v5.6 Soft :{CONFIG['port']}")
+    logger.info(f"🚀 VROOM v5.7 :{CONFIG['port']}")
     asyncio.create_task(keep_alive())
     if TELEGRAM.get("token") and TELEGRAM.get("admin_ids"):
         TELEGRAM["enabled"] = True
@@ -149,6 +149,13 @@ def is_expired(link):
     except Exception:
         return False
 
+def is_quota_exceeded(link):
+    """حجم تموم شده؟"""
+    limit = link.get("limit_bytes", 0) if isinstance(link, dict) else 0
+    if not limit or limit <= 0:
+        return False
+    return link.get("used_bytes", 0) >= limit
+
 def count_connections_for_link(uid):
     return len(link_ip_map.get(uid, set()))
 
@@ -266,7 +273,7 @@ async def handle_callback(cq):
     
     if data == "stats":
         async with LINKS_LOCK:
-            n, active = len(LINKS), sum(1 for x in LINKS.values() if x.get("active") and not is_expired(x))
+            n, active = len(LINKS), sum(1 for x in LINKS.values() if x.get("active") and not is_expired(x) and not is_quota_exceeded(x))
         if lang == "fa":
             t = f"📊 <b>آمار زنده</b>\n\n🔗 اینباند: {n} (فعال: {active})\n📡 اتصال: {len(connections)}\n📥 دانلود: {fmt_bytes(stats['download_bytes'])}\n📤 آپلود: {fmt_bytes(stats['upload_bytes'])}\n📦 کل: {fmt_bytes(stats['total_bytes'])}\n⏱️ آپتایم: {uptime()}\n🌐 {get_domain()}\n💻 CPU {psutil.cpu_percent()}%\n🧠 RAM {psutil.virtual_memory().percent}%"
         else:
@@ -280,7 +287,7 @@ async def handle_callback(cq):
         if not items:
             await tg_edit(chat_id, message_id, "📭 خالی" if lang == "fa" else "📭 Empty", reply_markup=ikb([[("➕", "create_start"), (home, "menu")]]))
             return
-        rows = [[(f"{'✅' if d.get('active') and not is_expired(d) else '❌'} {d['label']}", f"link:{uid}")] for uid, d in items[:15]]
+        rows = [[(f"{'✅' if d.get('active') and not is_expired(d) and not is_quota_exceeded(d) else '❌'} {d['label']}", f"link:{uid}")] for uid, d in items[:15]]
         rows.append([(home, "menu")])
         await tg_edit(chat_id, message_id, "📋 اینباندها" if lang == "fa" else "📋 Inbounds", reply_markup=ikb(rows))
         return
@@ -295,10 +302,11 @@ async def handle_callback(cq):
         domain = get_domain()
         sub, page = f"https://{domain}/sub/{uid}", f"https://{domain}/page/{uid}"
         vless = generate_vless_link(uid, remark=f"VROOM-{link['label']}")
+        quota_txt = " | حجم تموم" if is_quota_exceeded(link) else ""
         if lang == "fa":
-            t = f"🏷 <b>{link['label']}</b>\n\n📦 {fmt_bytes(link['used_bytes'])}/{fmt_bytes(link['limit_bytes']) if link['limit_bytes'] else '∞'}\n🔌 اتصالات: {count_connections_for_link(uid)}\n\n📥 <b>لینک ساب:</b>\n<code>{sub}</code>\n\n🖥 <b>صفحه:</b>\n<code>{page}</code>\n\n📋 <b>کانفیگ:</b>\n<code>{vless}</code>"
+            t = f"🏷 <b>{link['label']}</b>{quota_txt}\n\n📦 {fmt_bytes(link['used_bytes'])}/{fmt_bytes(link['limit_bytes']) if link['limit_bytes'] else '∞'}\n🔌 اتصالات: {count_connections_for_link(uid)}\n\n📥 <b>لینک ساب:</b>\n<code>{sub}</code>\n\n🖥 <b>صفحه:</b>\n<code>{page}</code>\n\n📋 <b>کانفیگ:</b>\n<code>{vless}</code>"
         else:
-            t = f"🏷 <b>{link['label']}</b>\n\n📦 {fmt_bytes(link['used_bytes'])}/{fmt_bytes(link['limit_bytes']) if link['limit_bytes'] else '∞'}\n🔌 Conns: {count_connections_for_link(uid)}\n\n📥 <b>Sub:</b>\n<code>{sub}</code>\n\n🖥 <b>Page:</b>\n<code>{page}</code>\n\n📋 <b>Config:</b>\n<code>{vless}</code>"
+            t = f"🏷 <b>{link['label']}</b>{quota_txt}\n\n📦 {fmt_bytes(link['used_bytes'])}/{fmt_bytes(link['limit_bytes']) if link['limit_bytes'] else '∞'}\n🔌 Conns: {count_connections_for_link(uid)}\n\n📥 <b>Sub:</b>\n<code>{sub}</code>\n\n🖥 <b>Page:</b>\n<code>{page}</code>\n\n📋 <b>Config:</b>\n<code>{vless}</code>"
         await tg_edit(chat_id, message_id, t, reply_markup=ikb([[("🗑", f"delask:{uid}"), ("📋", "list")], [(home, "menu")]]))
         return
     
@@ -459,7 +467,7 @@ async def start_telegram_bot():
 # ===================== API =====================
 @app.get("/")
 async def root():
-    return {"service": "VROOM", "version": "5.6", "domain": get_domain()}
+    return {"service": "VROOM", "version": "5.7", "domain": get_domain()}
 
 @app.get("/health")
 async def health():
@@ -549,7 +557,7 @@ async def list_links(_=Depends(require_auth)):
         for uid, data in LINKS.items():
             result.append({"uuid": uid, "label": data["label"], "limit_bytes": data["limit_bytes"], "used_bytes": data["used_bytes"],
                 "max_connections": data.get("max_connections", 0), "active": data["active"], "expiry": data.get("expiry", ""), "expired": is_expired(data),
-                "created_at": data["created_at"], "current_connections": count_connections_for_link(uid),
+                "quota_exceeded": is_quota_exceeded(data), "created_at": data["created_at"], "current_connections": count_connections_for_link(uid),
                 "vless_link": generate_vless_link(uid, remark=f"VROOM-{data['label']}"), "sub_url": f"https://{domain}/sub/{uid}", "page_url": f"https://{domain}/page/{uid}"})
     result.sort(key=lambda x: x["created_at"], reverse=True)
     return {"links": result}
@@ -674,6 +682,8 @@ async def subscription_raw(uid: str, request: Request):
         raise HTTPException(403, "Disabled")
     if is_expired(link):
         raise HTTPException(403, "Expired")
+    if is_quota_exceeded(link):
+        raise HTTPException(403, "Quota exceeded")
     
     content = await build_sub_content(uid, link)
     used, total, expire_ts = link["used_bytes"], (link["limit_bytes"] if link["limit_bytes"] > 0 else 0), 0
@@ -696,15 +706,19 @@ async def subscription_raw(uid: str, request: Request):
         return Response(content=_b64.b64encode(raw.encode()).decode(), media_type="text/plain; charset=utf-8", headers=headers)
     return Response(content=raw, media_type="text/plain; charset=utf-8", headers=headers)
 
-# ===================== PAGE - Soft & Smooth =====================
+# ===================== PAGE =====================
 @app.get("/page/{uid}")
 async def subscription_page(uid: str):
     async with LINKS_LOCK:
         link = LINKS.get(uid)
         if link is None:
             raise HTTPException(404)
-    if not link["active"] or is_expired(link):
-        raise HTTPException(403)
+    if not link["active"]:
+        raise HTTPException(403, "Disabled")
+    if is_expired(link):
+        raise HTTPException(403, "Expired")
+    # اگر حجم تموم شده، صفحه رو نشون می‌دیم ولی با وضعیت محدود (کاربر ببینه)
+    # اتصال واقعی در WebSocket قطع می‌شه
     
     server_link = generate_vless_link(uid, remark=f"VROOM-{link['label']}")
     used_gb = round(link["used_bytes"] / 1024 ** 3, 2)
@@ -714,8 +728,8 @@ async def subscription_page(uid: str):
     
     if is_expired(link):
         status_fa, status_en, sc = "منقضی", "Expired", "#f43f5e"
-    elif link["limit_bytes"] and link["used_bytes"] >= link["limit_bytes"]:
-        status_fa, status_en, sc = "محدود", "Limited", "#f59e0b"
+    elif is_quota_exceeded(link):
+        status_fa, status_en, sc = "حجم تمام", "Quota Full", "#f59e0b"
     else:
         status_fa, status_en, sc = "فعال", "Active", "#10b981"
     
@@ -960,6 +974,9 @@ async def add_usage(uid, n, direction="total"):
     async with LINKS_LOCK:
         if uid in LINKS:
             LINKS[uid]["used_bytes"] += n
+            # اگر حجم تموم شد، اتصالات رو قطع کن
+            if is_quota_exceeded(LINKS[uid]):
+                asyncio.create_task(close_connections_for_link(uid))
     stats["total_bytes"] += n
     if direction == "up":
         stats["upload_bytes"] += n
@@ -1015,8 +1032,8 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
     try:
         async with LINKS_LOCK:
             link_data = LINKS.get(uuid)
-            if not link_data or not link_data["active"] or is_expired(link_data):
-                await websocket.close(code=1008)
+            if not link_data or not link_data["active"] or is_expired(link_data) or is_quota_exceeded(link_data):
+                await websocket.close(code=1008, reason="quota/expired/disabled")
                 return
             max_conn = link_data.get("max_connections", 0)
         if max_conn > 0 and client_ip not in link_ip_map.get(uuid, set()) and count_connections_for_link(uuid) >= max_conn:
@@ -1222,8 +1239,10 @@ async function loadL(){const r=await fetch('/api/links');const d=await r.json();
 if(!d.links?.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--muted)">Empty</td></tr>';return}
 b.innerHTML=d.links.map(l=>{const u=(l.used_bytes/1e9).toFixed(2),lim=l.limit_bytes?(l.limit_bytes/1e9).toFixed(1)+'G':'∞';
 const sub=l.sub_url||(location.origin+'/sub/'+l.uuid),page=l.page_url||(location.origin+'/page/'+l.uuid);
+const st = l.active && !l.expired && !l.quota_exceeded ? 'ton' : 'toff';
+const stTxt = l.quota_exceeded ? 'FULL' : (l.active&&!l.expired?'ON':'OFF');
 return `<tr><td><b>${l.label}</b></td><td>${u}/${lim}</td><td>${l.current_connections}/${l.max_connections||'∞'}</td>
-<td><span class="tag ${l.active&&!l.expired?'ton':'toff'}">${l.active&&!l.expired?'ON':'OFF'}</span></td>
+<td><span class="tag ${st}">${stTxt}</span></td>
 <td style="display:flex;gap:3px;flex-wrap:wrap">
 <button class="btn bo" style="padding:2px 6px;font-size:9px" onclick="navigator.clipboard.writeText('${sub}').then(()=>toast('Sub'))">Sub</button>
 <button class="btn bo" style="padding:2px 6px;font-size:9px" onclick="navigator.clipboard.writeText('${page}').then(()=>toast('Page'))">Page</button>
