@@ -40,16 +40,26 @@ TELEGRAM_DEPS = [
     "pyrogram==2.0.106",
     "telethon==1.36.0",
     "httpx", "aiohttp", "requests",
+    # کتابخانه‌های رایج ربات‌های فارسی / عمومی
+    "jdatetime", "persiantools", "pytz", "python-dateutil",
+    "Pillow", "qrcode", "openpyxl", "pandas",
+    "beautifulsoup4", "lxml", "cryptography",
+    "redis", "pymongo", "SQLAlchemy",
+    "python-dotenv", "schedule", "APScheduler",
+    "emoji", "deep-translator", "gTTS",
 ]
 
 RUNNING_BOTS = {}          # bot_id -> info
 BOTS_LOCK = asyncio.Lock()
 DEPS_INSTALLED = False
 DEPS_LOCK = asyncio.Lock()
-# لینک‌های دسترسی موقت به صفحه راه‌انداز (رمز یکتا برای هر درخواست)
-BOT_RUNNER_ACCESS = {}     # access_key -> {"expires": ts, "user_id": int, "password": str}
+# لینک‌های دسترسی موقت / دائمی به صفحه راه‌انداز
+BOT_RUNNER_ACCESS = {}     # access_key -> {"expires": ts|None, "runner_id": str, "password": str, "permanent": bool}
 BOT_RUNNER_ACCESS_LOCK = asyncio.Lock()
-BOT_RUNNER_ACCESS_TTL = 60 * 60 * 6  # 6 ساعت
+BOT_RUNNER_ACCESS_TTL = 60 * 60 * 6  # 6 ساعت برای لینک موقت
+
+# حساب‌های راه‌انداز چندکاربره (مثل اینباند)
+RUNNERS_FILE = BOTS_DIR / "runners.json"
 
 def load_bots_data():
     if BOTS_DATA_FILE.exists():
@@ -62,29 +72,81 @@ def load_bots_data():
 def save_bots_data(data):
     BOTS_DATA_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
+def load_runners():
+    if RUNNERS_FILE.exists():
+        try:
+            return json.loads(RUNNERS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+def save_runners(data):
+    RUNNERS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+async def pip_install_packages(packages: list) -> bool:
+    """نصب لیست پکیج‌ها با pip"""
+    ok = True
+    for dep in packages:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "pip", "install", "--quiet", dep,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            _, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                logger.warning(f"pip install {dep} failed: {stderr.decode()[:200]}")
+                ok = False
+            else:
+                logger.info(f"✅ installed {dep}")
+        except Exception as e:
+            logger.warning(f"pip install {dep}: {e}")
+            ok = False
+    return ok
+
 async def install_telegram_deps():
     global DEPS_INSTALLED
     async with DEPS_LOCK:
         if DEPS_INSTALLED:
             return True
-        logger.info("📦 Installing Telegram dependencies...")
-        ok = True
-        for dep in TELEGRAM_DEPS:
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", dep,
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                )
-                stdout, stderr = await proc.communicate()
-                if proc.returncode != 0:
-                    logger.warning(f"Failed to install {dep}: {stderr.decode()[:200]}")
-                    ok = False
-            except Exception as e:
-                logger.warning(f"Failed to install {dep}: {e}")
-                ok = False
+        logger.info("📦 Installing Telegram + common dependencies...")
+        ok = await pip_install_packages(TELEGRAM_DEPS)
         DEPS_INSTALLED = True
-        logger.info("✅ Telegram dependencies ready" if ok else "⚠️ Some deps may have failed")
+        logger.info("✅ Dependencies ready" if ok else "⚠️ Some deps may have failed")
         return ok
+
+def extract_missing_module(log_text: str) -> str:
+    """از لاگ ModuleNotFoundError نام ماژول را برمی‌دارد"""
+    m = re.search(r"No module named ['\"]([^'\"]+)['\"]", log_text or "")
+    if m:
+        name = m.group(1).split(".")[0]
+        # نگاشت بعضی نام‌های import به نام پکیج pip
+        mapping = {
+            "PIL": "Pillow",
+            "bs4": "beautifulsoup4",
+            "cv2": "opencv-python-headless",
+            "sklearn": "scikit-learn",
+            "yaml": "PyYAML",
+            "dateutil": "python-dateutil",
+            "dotenv": "python-dotenv",
+            "telegram": "python-telegram-bot",
+            "telebot": "pyTelegramBotAPI",
+            "aiogram": "aiogram",
+            "pyrogram": "pyrogram",
+            "telethon": "telethon",
+        }
+        return mapping.get(name, name)
+    return ""
+
+async def auto_install_missing_and_retry(bot_id: str, code: str, token: str, permanent: bool, logs: str, owner_id: str = ""):
+    """اگر ماژول کم بود نصب کن و یک‌بار دوباره اجرا کن"""
+    mod = extract_missing_module(logs)
+    if not mod:
+        return False, logs
+    logger.info(f"📦 Auto-installing missing module: {mod}")
+    await pip_install_packages([mod])
+    # دوباره اجرا (بدون حلقه بی‌نهایت — فقط یک بار از بیرون صدا زده می‌شود)
+    ok, msg = await _start_user_bot_once(bot_id, code, token, permanent, owner_id=owner_id)
+    return ok, msg
 
 def _wrap_bot_code(code: str, token: str) -> str:
     """Inject token and ensure common bot libraries can find it. Also add basic error logging."""
@@ -114,7 +176,8 @@ def _wrap_bot_code(code: str, token: str) -> str:
     # Prefer running user code as-is after injection so polling/run_polling works
     return header + "\n" + code + "\n"
 
-async def start_user_bot(bot_id: str, code: str, token: str, permanent: bool = False):
+async def _start_user_bot_once(bot_id: str, code: str, token: str, permanent: bool = False, owner_id: str = ""):
+    """یک‌بار تلاش برای اجرای ربات (بدون ریترای وابستگی)"""
     await install_telegram_deps()
     bot_dir = (BOTS_DIR / bot_id).resolve()
     bot_dir.mkdir(parents=True, exist_ok=True)
@@ -130,7 +193,6 @@ async def start_user_bot(bot_id: str, code: str, token: str, permanent: bool = F
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
 
-    # Stop previous instance of same bot_id if any
     async with BOTS_LOCK:
         old = RUNNING_BOTS.get(bot_id)
         if old and old.get("process"):
@@ -145,9 +207,8 @@ async def start_user_bot(bot_id: str, code: str, token: str, permanent: bool = F
 
     try:
         log_handle = open(log_file, "a", encoding="utf-8")
-        log_handle.write(f"\n===== START {datetime.now().isoformat()} permanent={permanent} =====\n")
+        log_handle.write(f"\n===== START {datetime.now().isoformat()} permanent={permanent} owner={owner_id} =====\n")
         log_handle.flush()
-        # فقط "bot.py" — چون cwd همان پوشه ربات است (جلوگیری از مسیر دوبل)
         proc = subprocess.Popen(
             [sys.executable, "-u", "bot.py"],
             cwd=str(bot_dir),
@@ -157,17 +218,15 @@ async def start_user_bot(bot_id: str, code: str, token: str, permanent: bool = F
             start_new_session=True,
             close_fds=True,
         )
-        # Wait a moment to catch immediate crash
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(2.0)
         poll = proc.poll()
         logs_preview = ""
         try:
-            logs_preview = log_file.read_text(encoding="utf-8", errors="ignore")[-1500:]
+            logs_preview = log_file.read_text(encoding="utf-8", errors="ignore")[-2000:]
         except Exception:
             pass
 
         if poll is not None:
-            # Process already exited
             return False, f"ربات بلافاصله بسته شد (کد خروج {poll}). لاگ:\n{logs_preview}"
 
         async with BOTS_LOCK:
@@ -178,6 +237,7 @@ async def start_user_bot(bot_id: str, code: str, token: str, permanent: bool = F
                 "started_at": datetime.now().isoformat(),
                 "pid": proc.pid,
                 "log_file": str(log_file),
+                "owner_id": owner_id,
             }
         data = load_bots_data()
         data[bot_id] = {
@@ -186,11 +246,36 @@ async def start_user_bot(bot_id: str, code: str, token: str, permanent: bool = F
             "code": code,
             "started_at": datetime.now().isoformat(),
             "active": True,
+            "owner_id": owner_id,
         }
         save_bots_data(data)
         return True, f"ربات با PID {proc.pid} اجرا شد و در حال اجراست"
     except Exception as e:
         return False, str(e)
+
+async def start_user_bot(bot_id: str, code: str, token: str, permanent: bool = False, owner_id: str = ""):
+    """اجرا با ریترای خودکار در صورت ModuleNotFoundError"""
+    ok, msg = await _start_user_bot_once(bot_id, code, token, permanent, owner_id=owner_id)
+    if ok:
+        return ok, msg
+    # اگر ماژول کم بود، نصب کن و یک‌بار دوباره امتحان کن
+    if "No module named" in (msg or "") or "ModuleNotFoundError" in (msg or ""):
+        mod = extract_missing_module(msg)
+        if mod:
+            logger.info(f"📦 Auto-install missing: {mod}")
+            await pip_install_packages([mod])
+            ok2, msg2 = await _start_user_bot_once(bot_id, code, token, permanent, owner_id=owner_id)
+            if ok2:
+                return True, f"✅ بعد از نصب {mod} اجرا شد. {msg2}"
+            # ممکن است چند ماژول کم باشد — یک دور دیگر
+            if "No module named" in (msg2 or ""):
+                mod2 = extract_missing_module(msg2)
+                if mod2 and mod2 != mod:
+                    await pip_install_packages([mod2])
+                    ok3, msg3 = await _start_user_bot_once(bot_id, code, token, permanent, owner_id=owner_id)
+                    return ok3, msg3
+            return ok2, msg2
+    return ok, msg
 
 async def stop_user_bot(bot_id: str, clear_permanent: bool = True):
     async with BOTS_LOCK:
@@ -232,24 +317,29 @@ async def restore_permanent_bots():
     for bot_id, info in data.items():
         if info.get("permanent") and info.get("active"):
             logger.info(f"🔄 Restoring permanent bot: {bot_id}")
-            ok, msg = await start_user_bot(bot_id, info.get("code", ""), info.get("token", ""), permanent=True)
+            ok, msg = await start_user_bot(
+                bot_id, info.get("code", ""), info.get("token", ""),
+                permanent=True, owner_id=info.get("owner_id", "")
+            )
             logger.info(f"Restore {bot_id}: {ok} {msg}")
 
-async def create_bot_runner_access(user_id: int = 0) -> tuple:
-    """ساخت لینک + رمز یکتا برای دسترسی به صفحه راه‌انداز بدون لاگین اصلی"""
+async def create_bot_runner_access(user_id: int = 0, runner_id: str = "", password: str = None, permanent: bool = False) -> tuple:
+    """ساخت لینک + رمز برای دسترسی به صفحه راه‌انداز"""
     access_key = secrets.token_urlsafe(16)
-    password = secrets.token_urlsafe(8)
-    expires = time.time() + BOT_RUNNER_ACCESS_TTL
+    if not password:
+        password = secrets.token_urlsafe(8)
+    expires = None if permanent else (time.time() + BOT_RUNNER_ACCESS_TTL)
     async with BOT_RUNNER_ACCESS_LOCK:
-        # پاکسازی منقضی‌ها
         now = time.time()
-        expired = [k for k, v in BOT_RUNNER_ACCESS.items() if v["expires"] < now]
+        expired = [k for k, v in BOT_RUNNER_ACCESS.items() if v.get("expires") and v["expires"] < now]
         for k in expired:
             BOT_RUNNER_ACCESS.pop(k, None)
         BOT_RUNNER_ACCESS[access_key] = {
             "expires": expires,
             "user_id": user_id,
+            "runner_id": runner_id,
             "password": password,
+            "permanent": permanent,
             "created_at": datetime.now().isoformat(),
         }
     domain = get_domain()
@@ -259,23 +349,66 @@ async def create_bot_runner_access(user_id: int = 0) -> tuple:
 async def validate_bot_runner_access(key: str, password: str = None) -> bool:
     if not key:
         return False
+    # اول از حافظه
     async with BOT_RUNNER_ACCESS_LOCK:
         info = BOT_RUNNER_ACCESS.get(key)
-        if not info:
-            return False
-        if info["expires"] < time.time():
-            BOT_RUNNER_ACCESS.pop(key, None)
-            return False
-        if password is not None and info["password"] != password:
-            return False
-        return True
+        if info:
+            if info.get("expires") and info["expires"] < time.time():
+                BOT_RUNNER_ACCESS.pop(key, None)
+            else:
+                if password is not None and info["password"] != password:
+                    return False
+                return True
+    # بعد از runners.json (حساب‌های دائمی چندکاربره)
+    runners = load_runners()
+    for rid, r in runners.items():
+        if r.get("access_key") == key and r.get("active", True):
+            if r.get("expiry") and is_expired({"expiry": r["expiry"]}):
+                return False
+            if password is not None and r.get("password") != password:
+                return False
+            # در حافظه هم بگذار
+            async with BOT_RUNNER_ACCESS_LOCK:
+                BOT_RUNNER_ACCESS[key] = {
+                    "expires": None,
+                    "runner_id": rid,
+                    "password": r.get("password", ""),
+                    "permanent": True,
+                }
+            return True
+    return False
+
+async def get_runner_id_from_key(key: str) -> str:
+    async with BOT_RUNNER_ACCESS_LOCK:
+        info = BOT_RUNNER_ACCESS.get(key)
+        if info:
+            return info.get("runner_id") or ""
+    runners = load_runners()
+    for rid, r in runners.items():
+        if r.get("access_key") == key:
+            return rid
+    return ""
 
 async def grant_bot_runner_session(key: str) -> str:
-    """بعد از تأیید رمز، یک سشن موقت برای APIهای ربات می‌سازد"""
+    """بعد از تأیید رمز، سشن موقت + ذخیره runner_id در سشن"""
     t = secrets.token_urlsafe(32)
+    runner_id = await get_runner_id_from_key(key)
+    ttl = BOT_RUNNER_ACCESS_TTL
+    # اگر حساب دائمی بود TTL بلندتر
+    if runner_id:
+        runners = load_runners()
+        if runners.get(runner_id, {}).get("access_key") == key:
+            ttl = 60 * 60 * 24 * 30  # ۳۰ روز
     async with SESSIONS_LOCK:
-        SESSIONS[t] = time.time() + BOT_RUNNER_ACCESS_TTL
+        SESSIONS[t] = time.time() + ttl
+        # نگاشت سشن به runner
+        SESSIONS[t + "_runner"] = runner_id or ""
     return t
+
+def get_session_runner_id(session_token: str) -> str:
+    if not session_token:
+        return ""
+    return SESSIONS.get(session_token + "_runner") or ""
 
 # ===================== LIFESPAN =====================
 @asynccontextmanager
@@ -585,38 +718,95 @@ async def handle_callback(cq):
     # ---------- Custom Bots Menu ----------
     if data == "bots_menu":
         data_bots = load_bots_data()
+        runners = load_runners()
         rows = []
-        for bid, info in list(data_bots.items())[:12]:
+        for rid, r in list(runners.items())[:8]:
+            status = "✅" if r.get("active") and not (r.get("expiry") and is_expired({"expiry": r["expiry"]})) else "❌"
+            rows.append([(f"{status} {r.get('label', rid)[:16]}", f"runnerinfo:{rid}")])
+        for bid, info in list(data_bots.items())[:6]:
             alive = await is_bot_alive(bid)
             status = "🟢" if alive else "🔴"
             perm = "♾️" if info.get("permanent") else ""
-            rows.append([(f"{status} {bid[:14]} {perm}", f"botinfo:{bid}")])
-        rows.append([("🌐 لینک راه‌انداز + رمز یکتا", "open_runner")])
+            rows.append([(f"{status} {bid[:12]} {perm}", f"botinfo:{bid}")])
+        rows.append([("➕ حساب جدید (لینک+رمز)", "new_runner")])
+        rows.append([("🌐 لینک موقت ادمین", "open_runner")])
         rows.append([(home, "menu")])
         txt = ("🤖 <b>ربات‌های سفارشی</b>\n\n"
-               "برای ساخت ربات جدید روی دکمه لینک بزن.\n"
-               "هر بار یک لینک و رمز اختصاصی فقط برای تو ساخته می‌شود.") if lang == "fa" else (
-               "🤖 <b>Custom Bots</b>\n\nTap the link button.\nEach time a unique link + password is generated for you.")
+               "• حساب جدید = لینک+رمز برای دادن به مشتری\n"
+               "• هر حساب سقف تعداد ربات و انقضا دارد\n"
+               "• از داشبورد هم می‌توانی مدیریت کنی") if lang == "fa" else (
+               "🤖 <b>Custom Bots</b>\n\n• New account = link+pass for customers\n• Each has max bots & expiry")
         await tg_edit(chat_id, message_id, txt, reply_markup=ikb(rows))
+        return
+
+    if data == "new_runner":
+        # ساخت سریع حساب با پیش‌فرض
+        rid = "run_" + secrets.token_hex(4)
+        password = secrets.token_urlsafe(8)
+        access_key = secrets.token_urlsafe(16)
+        label = "u" + secrets.token_hex(2)
+        runners = load_runners()
+        runners[rid] = {
+            "label": label, "password": password, "max_bots": 1,
+            "access_key": access_key, "active": True, "expiry": "",
+            "created_at": datetime.now().isoformat(),
+        }
+        save_runners(runners)
+        async with BOT_RUNNER_ACCESS_LOCK:
+            BOT_RUNNER_ACCESS[access_key] = {
+                "expires": None, "runner_id": rid, "password": password, "permanent": True,
+            }
+        domain = get_domain()
+        link = f"https://{domain}/bot-runner?key={access_key}"
+        t = (f"✅ <b>حساب ساخته شد</b>\n\n🏷 <code>{label}</code>\n"
+             f"🤖 سقف: ۱ ربات\n\n🔗 لینک:\n<code>{link}</code>\n\n"
+             f"🔑 رمز:\n<code>{password}</code>\n\nاین را به مشتری بده.")
+        await tg_edit(chat_id, message_id, t, reply_markup=ikb([[("➕ یکی دیگر", "new_runner"), ("📋", "bots_menu")], [(home, "menu")]]))
+        return
+
+    if data.startswith("runnerinfo:"):
+        rid = data[11:]
+        r = load_runners().get(rid)
+        if not r:
+            await tg_edit(chat_id, message_id, "❌", reply_markup=ikb([[("📋", "bots_menu")]]))
+            return
+        domain = get_domain()
+        link = f"https://{domain}/bot-runner?key={r.get('access_key','')}"
+        t = (f"🏷 <b>{r.get('label')}</b>\n\n🔑 <code>{r.get('password')}</code>\n"
+             f"🤖 سقف: {r.get('max_bots') or '∞'}\n🔗\n<code>{link}</code>")
+        await tg_edit(chat_id, message_id, t, reply_markup=ikb([
+            [("🗑 حذف حساب", f"runnerdel:{rid}"), ("📋", "bots_menu")]
+        ]))
+        return
+
+    if data.startswith("runnerdel:"):
+        rid = data[10:]
+        runners = load_runners()
+        r = runners.pop(rid, None)
+        save_runners(runners)
+        if r and r.get("access_key"):
+            async with BOT_RUNNER_ACCESS_LOCK:
+                BOT_RUNNER_ACCESS.pop(r["access_key"], None)
+        data_bots = load_bots_data()
+        for bid, info in list(data_bots.items()):
+            if info.get("owner_id") == rid:
+                await stop_user_bot(bid, clear_permanent=True)
+                data_bots.pop(bid, None)
+                shutil.rmtree(BOTS_DIR / bid, ignore_errors=True)
+        save_bots_data(data_bots)
+        await tg_edit(chat_id, message_id, "✅ حذف شد", reply_markup=ikb([[("📋", "bots_menu"), (home, "menu")]]))
         return
 
     if data == "open_runner":
         link, password, access_key = await create_bot_runner_access(user_id)
         if lang == "fa":
-            t = (f"🔐 <b>لینک اختصاصی راه‌انداز ربات</b>\n\n"
+            t = (f"🔐 <b>لینک موقت ادمین (۶ ساعت)</b>\n\n"
                  f"🔗 لینک:\n<code>{link}</code>\n\n"
-                 f"🔑 رمز دسترسی:\n<code>{password}</code>\n\n"
-                 f"⏱ اعتبار: ۶ ساعت\n"
-                 f"⚠️ این لینک و رمز فقط برای توست. بعد از ورود، کد ربات را آپلود/بچسبان و اجرا کن.\n"
-                 f"تیک «همیشه روشن» = بعد از ریستارت پنل هم دوباره بالا می‌آید.")
+                 f"🔑 رمز:\n<code>{password}</code>\n\n"
+                 f"برای مشتری از «حساب جدید» استفاده کن.")
         else:
-            t = (f"🔐 <b>Private Bot-Runner Link</b>\n\n"
-                 f"🔗 Link:\n<code>{link}</code>\n\n"
-                 f"🔑 Password:\n<code>{password}</code>\n\n"
-                 f"⏱ Valid: 6 hours\n"
-                 f"⚠️ Unique for you. Upload/paste bot code and run.\n"
-                 f"Permanent toggle = auto-restart after panel restart.")
-        await tg_edit(chat_id, message_id, t, reply_markup=ikb([[("🔄 لینک جدید", "open_runner"), (home, "menu")]]))
+            t = (f"🔐 <b>Temp admin link (6h)</b>\n\n🔗 <code>{link}</code>\n🔑 <code>{password}</code>")
+        await tg_edit(chat_id, message_id, t, reply_markup=ikb([[("🔄", "open_runner"), (home, "menu")]]))
         return
 
     if data.startswith("botinfo:"):
@@ -1077,11 +1267,33 @@ async def run_user_bot(
     if not token or len(token) < 20:
         return JSONResponse({"success": False, "message": "❌ توکن نامعتبر است", "logs": ""})
 
-    bot_id = "bot_" + secrets.token_hex(4)
-    ok, msg = await start_user_bot(bot_id, code, token, permanent=permanent)
+    # owner از سشن (حساب راه‌انداز چندکاربره)
+    sess = request.cookies.get(SESSION_COOKIE) or ""
+    owner_id = get_session_runner_id(sess)
 
-    # کمی صبر برای پر شدن لاگ اولیه
-    await asyncio.sleep(0.8)
+    # محدودیت تعداد ربات برای حساب runner
+    if owner_id:
+        runners = load_runners()
+        rinfo = runners.get(owner_id)
+        if not rinfo or not rinfo.get("active", True):
+            return JSONResponse({"success": False, "message": "❌ حساب شما غیرفعال است", "logs": ""})
+        if rinfo.get("expiry") and is_expired({"expiry": rinfo["expiry"]}):
+            return JSONResponse({"success": False, "message": "❌ حساب شما منقضی شده", "logs": ""})
+        max_bots = int(rinfo.get("max_bots") or 0)
+        if max_bots > 0:
+            data = load_bots_data()
+            owned = sum(1 for b in data.values() if b.get("owner_id") == owner_id and b.get("active"))
+            if owned >= max_bots:
+                return JSONResponse({
+                    "success": False,
+                    "message": f"❌ سقف تعداد ربات ({max_bots}) پر شده. یکی را حذف کنید.",
+                    "logs": ""
+                })
+
+    bot_id = "bot_" + secrets.token_hex(4)
+    ok, msg = await start_user_bot(bot_id, code, token, permanent=permanent, owner_id=owner_id)
+
+    await asyncio.sleep(0.5)
     logs = ""
     log_path = BOTS_DIR / bot_id / "bot.log"
     if log_path.exists():
@@ -1092,32 +1304,38 @@ async def run_user_bot(
 
     if ok:
         still = await is_bot_alive(bot_id)
-        extra = " | حالت همیشه روشن فعال است (بعد از ریستارت پنل هم برمی‌گردد)" if permanent else ""
+        extra = " | همیشه روشن فعال است" if permanent else ""
         if not still:
             return JSONResponse({
                 "success": False,
-                "message": f"❌ ربات شروع شد ولی بلافاصله متوقف شد. لاگ را ببینید.",
+                "message": "❌ ربات شروع شد ولی بلافاصله متوقف شد. لاگ را ببینید.",
                 "logs": logs or msg,
                 "bot_id": bot_id
             })
         return JSONResponse({
             "success": True,
-            "message": f"✅ ربات با موفقیت اجرا شد (ID: {bot_id}){extra}",
+            "message": f"✅ ربات اجرا شد (ID: {bot_id}){extra}",
             "logs": logs or "ربات در حال اجرا است...",
             "bot_id": bot_id
         })
     return JSONResponse({"success": False, "message": f"❌ خطا: {msg}", "logs": logs or msg})
 
 @app.get("/api/user/bots")
-async def list_user_bots(_=Depends(require_auth)):
+async def list_user_bots(request: Request, _=Depends(require_auth)):
     data = load_bots_data()
+    sess = request.cookies.get(SESSION_COOKIE) or ""
+    owner_id = get_session_runner_id(sess)
     result = []
     for bid, info in data.items():
+        # اگر سشن متعلق به runner باشد فقط ربات‌های خودش
+        if owner_id and info.get("owner_id") != owner_id:
+            continue
         result.append({
             "id": bid,
             "permanent": info.get("permanent", False),
             "active": await is_bot_alive(bid),
             "started_at": info.get("started_at"),
+            "owner_id": info.get("owner_id", ""),
             "token_preview": (info.get("token") or "")[:12] + "..."
         })
     return {"bots": result}
@@ -1138,16 +1356,129 @@ async def api_delete_bot(bot_id: str, _=Depends(require_auth)):
 
 @app.post("/api/bot-runner/auth")
 async def bot_runner_auth(request: Request):
-    """تأیید رمز لینک اختصاصی و صدور کوکی سشن موقت"""
+    """تأیید رمز لینک اختصاصی و صدور کوکی سشن"""
     body = await request.json()
     key = (body.get("key") or "").strip()
     password = (body.get("password") or "").strip()
     if not await validate_bot_runner_access(key, password):
         raise HTTPException(401, "رمز یا لینک نامعتبر / منقضی شده")
     session_token = await grant_bot_runner_session(key)
-    resp = JSONResponse({"ok": True})
-    resp.set_cookie(SESSION_COOKIE, session_token, max_age=BOT_RUNNER_ACCESS_TTL, httponly=True, samesite="lax", path="/")
+    max_age = 60 * 60 * 24 * 30
+    resp = JSONResponse({"ok": True, "runner_id": await get_runner_id_from_key(key)})
+    resp.set_cookie(SESSION_COOKIE, session_token, max_age=max_age, httponly=True, samesite="lax", path="/")
     return resp
+
+# ===================== MULTI-USER RUNNER ACCOUNTS (مثل اینباند) =====================
+@app.get("/api/runners")
+async def list_runners(_=Depends(require_auth)):
+    runners = load_runners()
+    data = load_bots_data()
+    domain = get_domain()
+    result = []
+    for rid, r in runners.items():
+        owned = sum(1 for b in data.values() if b.get("owner_id") == rid)
+        active_bots = sum(1 for bid, b in data.items() if b.get("owner_id") == rid and (RUNNING_BOTS.get(bid) and RUNNING_BOTS[bid].get("process") and RUNNING_BOTS[bid]["process"].poll() is None))
+        link = f"https://{domain}/bot-runner?key={r.get('access_key', '')}"
+        result.append({
+            "id": rid,
+            "label": r.get("label", rid),
+            "password": r.get("password", ""),
+            "max_bots": r.get("max_bots", 0),
+            "bots_count": owned,
+            "active_bots": active_bots,
+            "active": r.get("active", True),
+            "expiry": r.get("expiry", ""),
+            "expired": is_expired({"expiry": r.get("expiry")}) if r.get("expiry") else False,
+            "access_key": r.get("access_key", ""),
+            "link": link,
+            "created_at": r.get("created_at", ""),
+        })
+    result.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    return {"runners": result}
+
+@app.post("/api/runners")
+async def create_runner(request: Request, _=Depends(require_auth)):
+    body = await request.json()
+    label = (body.get("label") or "user").strip()[:40]
+    if not re.match(r"^[a-zA-Z0-9\-_. ]+$", label):
+        raise HTTPException(400, "English only for label")
+    max_bots = max(0, int(body.get("max_bots") or 1))
+    expiry_days = body.get("expiry_days")
+    password = (body.get("password") or "").strip() or secrets.token_urlsafe(8)
+    rid = "run_" + secrets.token_hex(4)
+    access_key = secrets.token_urlsafe(16)
+    runners = load_runners()
+    runners[rid] = {
+        "label": label,
+        "password": password,
+        "max_bots": max_bots,
+        "access_key": access_key,
+        "active": True,
+        "expiry": compute_expiry(expiry_days) if expiry_days is not None else "",
+        "created_at": datetime.now().isoformat(),
+    }
+    save_runners(runners)
+    # در حافظه هم ثبت
+    async with BOT_RUNNER_ACCESS_LOCK:
+        BOT_RUNNER_ACCESS[access_key] = {
+            "expires": None,
+            "runner_id": rid,
+            "password": password,
+            "permanent": True,
+        }
+    domain = get_domain()
+    link = f"https://{domain}/bot-runner?key={access_key}"
+    return {
+        "ok": True,
+        "id": rid,
+        "label": label,
+        "password": password,
+        "max_bots": max_bots,
+        "link": link,
+        "access_key": access_key,
+        "expiry": runners[rid]["expiry"],
+    }
+
+@app.patch("/api/runners/{rid}")
+async def patch_runner(rid: str, request: Request, _=Depends(require_auth)):
+    body = await request.json()
+    runners = load_runners()
+    if rid not in runners:
+        raise HTTPException(404)
+    if "active" in body:
+        runners[rid]["active"] = bool(body["active"])
+    if "max_bots" in body:
+        runners[rid]["max_bots"] = max(0, int(body["max_bots"] or 0))
+    if "expiry_days" in body:
+        runners[rid]["expiry"] = compute_expiry(body.get("expiry_days"))
+    if body.get("reset_password"):
+        new_pw = secrets.token_urlsafe(8)
+        runners[rid]["password"] = new_pw
+        key = runners[rid].get("access_key")
+        if key:
+            async with BOT_RUNNER_ACCESS_LOCK:
+                if key in BOT_RUNNER_ACCESS:
+                    BOT_RUNNER_ACCESS[key]["password"] = new_pw
+    save_runners(runners)
+    return {"ok": True, "password": runners[rid].get("password")}
+
+@app.delete("/api/runners/{rid}")
+async def delete_runner(rid: str, _=Depends(require_auth)):
+    runners = load_runners()
+    r = runners.pop(rid, None)
+    save_runners(runners)
+    if r and r.get("access_key"):
+        async with BOT_RUNNER_ACCESS_LOCK:
+            BOT_RUNNER_ACCESS.pop(r["access_key"], None)
+    # ربات‌های این کاربر را هم خاموش کن
+    data = load_bots_data()
+    for bid, info in list(data.items()):
+        if info.get("owner_id") == rid:
+            await stop_user_bot(bid, clear_permanent=True)
+            data.pop(bid, None)
+            shutil.rmtree(BOTS_DIR / bid, ignore_errors=True)
+    save_bots_data(data)
+    return {"ok": True}
 
 # ===================== SUB =====================
 @app.get("/sub/{uid}")
@@ -1597,11 +1928,17 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 </div>
 </section>
 <section class="page" id="p-bots">
-<div class="pt" data-f="ربات‌های سفارشی" data-e="Custom Bots">ربات‌های سفارشی</div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+<div class="pt" style="margin:0" data-f="ربات‌های سفارشی" data-e="Custom Bots">ربات‌های سفارشی</div>
+<button class="btn bg" onclick="$('#addRunnerM').classList.add('show')" data-f="+ حساب جدید" data-e="+ New account">+ حساب جدید</button>
+</div>
 <div class="card">
-<p style="font-size:12px;color:var(--muted);margin-bottom:10px">برای ساخت ربات جدید از صفحه امن راه‌انداز استفاده کنید.</p>
-<a class="btn bg" href="/bot-runner" target="_blank" style="display:inline-block;text-decoration:none;margin-bottom:12px">🚀 باز کردن صفحه راه‌انداز</a>
-<div id="blist" style="margin-top:10px"></div>
+<p style="font-size:12px;color:var(--muted);margin-bottom:10px">برای هر نفر یک حساب با رمز و لینک اختصاصی بساز. سقف تعداد ربات و روز انقضا قابل تنظیم است.</p>
+<div id="rlist" style="margin-top:8px"></div>
+</div>
+<div class="card" style="margin-top:10px">
+<h3 data-f="ربات‌های در حال اجرا" data-e="Running bots">ربات‌های در حال اجرا</h3>
+<div id="blist"></div>
 </div>
 </section>
 <section class="page" id="p-domain">
@@ -1619,6 +1956,15 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 <div class="grid2"><input id="nlim" type="number" placeholder="Volume"><select id="nun"><option>GB</option><option>MB</option></select></div>
 <input id="nexp" type="number" placeholder="Days"><input id="nmax" type="number" placeholder="Max IP">
 <button class="btn bg" style="width:100%" onclick="createL()" data-f="ساخت" data-e="Create">ساخت</button></div></div>
+<div class="modal-bg" id="addRunnerM" onclick="if(event.target===this)this.classList.remove('show')">
+<div class="modal"><h3 style="color:var(--blue);margin-bottom:8px">حساب راه‌انداز ربات</h3>
+<input id="rn-label" placeholder="نام (مثلا user1)">
+<input id="rn-max" type="number" placeholder="سقف تعداد ربات (مثلا 1 یا 3)" value="1">
+<input id="rn-days" type="number" placeholder="روز اعتبار (خالی = ∞)">
+<input id="rn-pass" placeholder="رمز (خالی = خودکار)">
+<button class="btn bg" style="width:100%" onclick="createRunner()">ساخت حساب + لینک</button>
+<div id="rn-result" style="margin-top:10px;font-size:11px;display:none;word-break:break-all"></div>
+</div></div>
 <div class="toast" id="toast"></div>
 <script>
 const $=s=>document.querySelector(s);let LANG=localStorage.getItem('vroom_dl')||'fa';
@@ -1665,10 +2011,42 @@ async function stopTg(){await fetch('/api/telegram/stop',{method:'POST'});toast(
 async function loadDom(){const r=await fetch('/api/domain');const d=await r.json();$('#dom-cur').textContent='Current: '+(d.domain||'Default')}
 async function saveDom(){await fetch('/api/domain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:$('#dom-in').value.trim()})});toast('Saved');loadDom()}
 async function chPass(){const r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:$('#cpw').value,new_password:$('#npw').value})});if(!r.ok){toast('Error');return}toast('OK')}
-async function loadBots(){try{const r=await fetch('/api/user/bots');const d=await r.json();const list=d.bots||[];
+async function loadBots(){try{
+const [rb,rr]=await Promise.all([fetch('/api/user/bots'),fetch('/api/runners')]);
+const db=await rb.json(),dr=await rr.json();
+const list=db.bots||[],runners=dr.runners||[];
+$('#rlist').innerHTML=runners.length?runners.map(r=>{
+  const st=r.active&&!r.expired?'ton':'toff';
+  const stTxt=r.expired?'EXP':(r.active?'ON':'OFF');
+  return `<div style="padding:10px;background:rgba(148,163,184,.05);border-radius:10px;margin-bottom:6px;font-size:12px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+<b>${r.label}</b> <span class="tag ${st}">${stTxt}</span>
+</div>
+<div style="color:var(--muted);margin-bottom:4px">🤖 ${r.bots_count}/${r.max_bots||'∞'} ربات · 🔑 <code style="user-select:all">${r.password}</code></div>
+<div style="font-size:10px;direction:ltr;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:6px">${r.link}</div>
+<div style="display:flex;gap:4px;flex-wrap:wrap">
+<button class="btn bo" style="padding:2px 8px;font-size:10px" onclick="navigator.clipboard.writeText('${r.link}').then(()=>toast('لینک'))">لینک</button>
+<button class="btn bo" style="padding:2px 8px;font-size:10px" onclick="navigator.clipboard.writeText('${r.password}').then(()=>toast('رمز'))">رمز</button>
+<button class="btn bo" style="padding:2px 8px;font-size:10px" onclick="navigator.clipboard.writeText('لینک: ${r.link}\\nرمز: ${r.password}').then(()=>toast('کپی شد'))">کپی هر دو</button>
+<button class="btn bd" style="padding:2px 8px;font-size:10px" onclick="delRunner('${r.id}')">حذف</button>
+</div></div>`}).join(''):'<div style="color:var(--muted);font-size:12px">هنوز حسابی نساخته‌اید — روی «حساب جدید» بزنید</div>';
 $('#blist').innerHTML=list.length?list.map(b=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:rgba(148,163,184,.05);border-radius:8px;margin-bottom:4px;font-size:12px">
-<span>${b.active?'🟢':'🔴'} ${b.id} ${b.permanent?'♾️':''}</span>
-<button class="btn bd" style="padding:2px 8px;font-size:10px" onclick="delBot('${b.id}')">Del</button></div>`).join(''):'<div style="color:var(--muted);font-size:12px">هنوز رباتی ساخته نشده</div>'}catch(e){}}
+<span>${b.active?'🟢':'🔴'} ${b.id} ${b.permanent?'♾️':''} ${b.owner_id?'· '+b.owner_id:''}</span>
+<button class="btn bd" style="padding:2px 8px;font-size:10px" onclick="delBot('${b.id}')">Del</button></div>`).join(''):'<div style="color:var(--muted);font-size:12px">رباتی در حال اجرا نیست</div>';
+}catch(e){console.error(e)}}
+async function createRunner(){
+  const label=$('#rn-label').value.trim()||('user'+Math.floor(Math.random()*900+100));
+  const max_bots=parseInt($('#rn-max').value)||1;
+  const expiry_days=$('#rn-days').value===''?0:parseFloat($('#rn-days').value);
+  const password=$('#rn-pass').value.trim();
+  const r=await fetch('/api/runners',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,max_bots,expiry_days,password})});
+  if(!r.ok){toast('Error');return}
+  const d=await r.json();
+  const box=$('#rn-result');box.style.display='block';
+  box.innerHTML=`✅ ساخته شد<br>🔗 <code>${d.link}</code><br>🔑 <code>${d.password}</code><br><button class="btn bo" style="margin-top:6px;padding:4px 10px" onclick="navigator.clipboard.writeText('لینک: ${d.link}\\nرمز: ${d.password}').then(()=>toast('کپی'))">کپی لینک+رمز</button>`;
+  loadBots();
+}
+async function delRunner(id){if(!confirm('حذف حساب و ربات‌هایش؟'))return;await fetch('/api/runners/'+id,{method:'DELETE'});toast('OK');loadBots()}
 async function delBot(id){if(!confirm('حذف؟'))return;await fetch('/api/user/bots/'+id,{method:'DELETE'});toast('OK');loadBots()}
 const st=localStorage.getItem('vt')||'light';document.documentElement.setAttribute('data-theme',st);document.getElementById('themeBtn').textContent=st==='light'?'☀️':'🌙';
 setL(LANG);loadS();setInterval(loadS,5000);
