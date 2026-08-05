@@ -44,6 +44,12 @@ TELEGRAM_DEPS = [
 
 RUNNING_BOTS = {}          # bot_id -> info
 BOTS_LOCK = asyncio.Lock()
+DEPS_INSTALLED = False
+DEPS_LOCK = asyncio.Lock()
+# لینک‌های دسترسی موقت به صفحه راه‌انداز (رمز یکتا برای هر درخواست)
+BOT_RUNNER_ACCESS = {}     # access_key -> {"expires": ts, "user_id": int, "password": str}
+BOT_RUNNER_ACCESS_LOCK = asyncio.Lock()
+BOT_RUNNER_ACCESS_TTL = 60 * 60 * 6  # 6 ساعت
 
 def load_bots_data():
     if BOTS_DATA_FILE.exists():
@@ -57,44 +63,112 @@ def save_bots_data(data):
     BOTS_DATA_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 async def install_telegram_deps():
-    logger.info("📦 Installing Telegram dependencies...")
-    for dep in TELEGRAM_DEPS:
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "pip", "install", "--quiet", dep,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            await proc.wait()
-        except Exception as e:
-            logger.warning(f"Failed to install {dep}: {e}")
-    logger.info("✅ Telegram dependencies ready")
+    global DEPS_INSTALLED
+    async with DEPS_LOCK:
+        if DEPS_INSTALLED:
+            return True
+        logger.info("📦 Installing Telegram dependencies...")
+        ok = True
+        for dep in TELEGRAM_DEPS:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", dep,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await proc.communicate()
+                if proc.returncode != 0:
+                    logger.warning(f"Failed to install {dep}: {stderr.decode()[:200]}")
+                    ok = False
+            except Exception as e:
+                logger.warning(f"Failed to install {dep}: {e}")
+                ok = False
+        DEPS_INSTALLED = True
+        logger.info("✅ Telegram dependencies ready" if ok else "⚠️ Some deps may have failed")
+        return ok
+
+def _wrap_bot_code(code: str, token: str) -> str:
+    """Inject token and ensure common bot libraries can find it. Also add basic error logging."""
+    code = code.strip()
+    # Always inject env-style tokens at the top
+    header = (
+        f'# -*- coding: utf-8 -*-\n'
+        f'import os, sys, traceback\n'
+        f'os.environ["BOT_TOKEN"] = "{token}"\n'
+        f'os.environ["TOKEN"] = "{token}"\n'
+        f'TOKEN = "{token}"\n'
+        f'BOT_TOKEN = "{token}"\n'
+        f'API_TOKEN = "{token}"\n'
+        f'telegram_token = "{token}"\n'
+        f'print("[VROOM] Bot starting with injected token...", flush=True)\n'
+    )
+    # If user code already has a token assignment near top, keep it but ensure variables exist
+    footer = (
+        '\n\n# VROOM safety net – keep process alive on unexpected exit of main\n'
+        'if __name__ == "__main__":\n'
+        '    try:\n'
+        '        pass  # user code already ran above if it had top-level start\n'
+        '    except Exception:\n'
+        '        traceback.print_exc()\n'
+        '        sys.stdout.flush()\n'
+    )
+    # Prefer running user code as-is after injection so polling/run_polling works
+    return header + "\n" + code + "\n"
 
 async def start_user_bot(bot_id: str, code: str, token: str, permanent: bool = False):
+    await install_telegram_deps()
     bot_dir = BOTS_DIR / bot_id
     bot_dir.mkdir(parents=True, exist_ok=True)
     code_file = bot_dir / "bot.py"
-
-    final_code = code
-    if "TOKEN" not in code and "token" not in code.lower()[:800]:
-        final_code = f'TOKEN = "{token}"\nBOT_TOKEN = "{token}"\n' + code
-
-    code_file.write_text(final_code, encoding="utf-8")
     log_file = bot_dir / "bot.log"
+
+    final_code = _wrap_bot_code(code, token)
+    code_file.write_text(final_code, encoding="utf-8")
 
     env = os.environ.copy()
     env["BOT_TOKEN"] = token
     env["TOKEN"] = token
+    env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+
+    # Stop previous instance of same bot_id if any
+    async with BOTS_LOCK:
+        old = RUNNING_BOTS.get(bot_id)
+        if old and old.get("process"):
+            try:
+                os.killpg(os.getpgid(old["process"].pid), signal.SIGTERM)
+            except Exception:
+                try:
+                    old["process"].terminate()
+                except Exception:
+                    pass
+            RUNNING_BOTS.pop(bot_id, None)
 
     try:
         log_handle = open(log_file, "a", encoding="utf-8")
+        log_handle.write(f"\n===== START {datetime.now().isoformat()} permanent={permanent} =====\n")
+        log_handle.flush()
         proc = subprocess.Popen(
-            [sys.executable, str(code_file)],
+            [sys.executable, "-u", str(code_file)],
             cwd=str(bot_dir),
             stdout=log_handle,
             stderr=subprocess.STDOUT,
             env=env,
-            start_new_session=True
+            start_new_session=True,
+            close_fds=True,
         )
+        # Wait a moment to catch immediate crash
+        await asyncio.sleep(1.5)
+        poll = proc.poll()
+        logs_preview = ""
+        try:
+            logs_preview = log_file.read_text(encoding="utf-8", errors="ignore")[-1500:]
+        except Exception:
+            pass
+
+        if poll is not None:
+            # Process already exited
+            return False, f"ربات بلافاصله بسته شد (کد خروج {poll}). لاگ:\n{logs_preview}"
+
         async with BOTS_LOCK:
             RUNNING_BOTS[bot_id] = {
                 "process": proc,
@@ -102,7 +176,7 @@ async def start_user_bot(bot_id: str, code: str, token: str, permanent: bool = F
                 "token": token[:12] + "...",
                 "started_at": datetime.now().isoformat(),
                 "pid": proc.pid,
-                "log_file": str(log_file)
+                "log_file": str(log_file),
             }
         data = load_bots_data()
         data[bot_id] = {
@@ -110,14 +184,14 @@ async def start_user_bot(bot_id: str, code: str, token: str, permanent: bool = F
             "token": token,
             "code": code,
             "started_at": datetime.now().isoformat(),
-            "active": True
+            "active": True,
         }
         save_bots_data(data)
-        return True, f"ربات با PID {proc.pid} اجرا شد"
+        return True, f"ربات با PID {proc.pid} اجرا شد و در حال اجراست"
     except Exception as e:
         return False, str(e)
 
-async def stop_user_bot(bot_id: str):
+async def stop_user_bot(bot_id: str, clear_permanent: bool = True):
     async with BOTS_LOCK:
         info = RUNNING_BOTS.get(bot_id)
         if info and info.get("process"):
@@ -128,20 +202,79 @@ async def stop_user_bot(bot_id: str):
                     info["process"].terminate()
                 except Exception:
                     pass
+            try:
+                info["process"].wait(timeout=3)
+            except Exception:
+                try:
+                    os.killpg(os.getpgid(info["process"].pid), signal.SIGKILL)
+                except Exception:
+                    pass
             RUNNING_BOTS.pop(bot_id, None)
     data = load_bots_data()
     if bot_id in data:
         data[bot_id]["active"] = False
-        data[bot_id]["permanent"] = False
+        if clear_permanent:
+            data[bot_id]["permanent"] = False
         save_bots_data(data)
     return True
 
+async def is_bot_alive(bot_id: str) -> bool:
+    async with BOTS_LOCK:
+        info = RUNNING_BOTS.get(bot_id)
+        if not info or not info.get("process"):
+            return False
+        return info["process"].poll() is None
+
 async def restore_permanent_bots():
+    await install_telegram_deps()
     data = load_bots_data()
     for bot_id, info in data.items():
         if info.get("permanent") and info.get("active"):
             logger.info(f"🔄 Restoring permanent bot: {bot_id}")
-            await start_user_bot(bot_id, info.get("code", ""), info.get("token", ""), permanent=True)
+            ok, msg = await start_user_bot(bot_id, info.get("code", ""), info.get("token", ""), permanent=True)
+            logger.info(f"Restore {bot_id}: {ok} {msg}")
+
+async def create_bot_runner_access(user_id: int = 0) -> tuple:
+    """ساخت لینک + رمز یکتا برای دسترسی به صفحه راه‌انداز بدون لاگین اصلی"""
+    access_key = secrets.token_urlsafe(16)
+    password = secrets.token_urlsafe(8)
+    expires = time.time() + BOT_RUNNER_ACCESS_TTL
+    async with BOT_RUNNER_ACCESS_LOCK:
+        # پاکسازی منقضی‌ها
+        now = time.time()
+        expired = [k for k, v in BOT_RUNNER_ACCESS.items() if v["expires"] < now]
+        for k in expired:
+            BOT_RUNNER_ACCESS.pop(k, None)
+        BOT_RUNNER_ACCESS[access_key] = {
+            "expires": expires,
+            "user_id": user_id,
+            "password": password,
+            "created_at": datetime.now().isoformat(),
+        }
+    domain = get_domain()
+    link = f"https://{domain}/bot-runner?key={access_key}"
+    return link, password, access_key
+
+async def validate_bot_runner_access(key: str, password: str = None) -> bool:
+    if not key:
+        return False
+    async with BOT_RUNNER_ACCESS_LOCK:
+        info = BOT_RUNNER_ACCESS.get(key)
+        if not info:
+            return False
+        if info["expires"] < time.time():
+            BOT_RUNNER_ACCESS.pop(key, None)
+            return False
+        if password is not None and info["password"] != password:
+            return False
+        return True
+
+async def grant_bot_runner_session(key: str) -> str:
+    """بعد از تأیید رمز، یک سشن موقت برای APIهای ربات می‌سازد"""
+    t = secrets.token_urlsafe(32)
+    async with SESSIONS_LOCK:
+        SESSIONS[t] = time.time() + BOT_RUNNER_ACCESS_TTL
+    return t
 
 # ===================== LIFESPAN =====================
 @asynccontextmanager
@@ -153,9 +286,10 @@ async def lifespan(app: FastAPI):
         follow_redirects=True
     )
     logger.info(f"🚀 VROOM v5.8 :{CONFIG['port']}")
-    asyncio.create_task(install_telegram_deps())
+    await install_telegram_deps()
     asyncio.create_task(restore_permanent_bots())
     asyncio.create_task(keep_alive())
+    asyncio.create_task(monitor_bots_loop())
     if TELEGRAM.get("token") and TELEGRAM.get("admin_ids"):
         TELEGRAM["enabled"] = True
         await start_telegram_bot()
@@ -167,6 +301,22 @@ async def lifespan(app: FastAPI):
     for bot_id, info in list(RUNNING_BOTS.items()):
         if not info.get("permanent"):
             await stop_user_bot(bot_id)
+
+async def monitor_bots_loop():
+    """ربات‌های دائمی که کرش کرده‌اند را دوباره بالا می‌آورد"""
+    while True:
+        await asyncio.sleep(45)
+        try:
+            data = load_bots_data()
+            for bot_id, info in list(data.items()):
+                if not info.get("permanent") or not info.get("active"):
+                    continue
+                alive = await is_bot_alive(bot_id)
+                if not alive:
+                    logger.warning(f"♻️ Permanent bot {bot_id} died – restarting")
+                    await start_user_bot(bot_id, info.get("code", ""), info.get("token", ""), permanent=True)
+        except Exception as e:
+            logger.error(f"monitor_bots: {e}")
 
 app = FastAPI(title="VROOM", docs_url=None, redoc_url=None, lifespan=lifespan)
 CONFIG = {"port": int(os.environ.get("PORT", 8080)), "secret": SECRET_KEY}
@@ -436,25 +586,42 @@ async def handle_callback(cq):
         data_bots = load_bots_data()
         rows = []
         for bid, info in list(data_bots.items())[:12]:
-            status = "🟢" if bid in RUNNING_BOTS else "🔴"
+            alive = await is_bot_alive(bid)
+            status = "🟢" if alive else "🔴"
             perm = "♾️" if info.get("permanent") else ""
             rows.append([(f"{status} {bid[:14]} {perm}", f"botinfo:{bid}")])
-        rows.append([("🌐 صفحه راه‌انداز (وب)", "open_runner")])
+        rows.append([("🌐 لینک راه‌انداز + رمز یکتا", "open_runner")])
         rows.append([(home, "menu")])
-        txt = "🤖 <b>ربات‌های سفارشی</b>\n\nبرای ساخت جدید از صفحه وب استفاده کن (نیاز به لاگین)." if lang == "fa" else "🤖 <b>Custom Bots</b>\n\nUse web page to create (login required)."
+        txt = ("🤖 <b>ربات‌های سفارشی</b>\n\n"
+               "برای ساخت ربات جدید روی دکمه لینک بزن.\n"
+               "هر بار یک لینک و رمز اختصاصی فقط برای تو ساخته می‌شود.") if lang == "fa" else (
+               "🤖 <b>Custom Bots</b>\n\nTap the link button.\nEach time a unique link + password is generated for you.")
         await tg_edit(chat_id, message_id, txt, reply_markup=ikb(rows))
         return
 
     if data == "open_runner":
-        domain = get_domain()
-        url = f"https://{domain}/bot-runner"
-        await tg_edit(chat_id, message_id, f"🌐 صفحه راه‌انداز (فقط ادمین):\n<code>{url}</code>\n\nابتدا وارد داشبورد شو.", reply_markup=ikb([[(home, "menu")]]))
+        link, password, access_key = await create_bot_runner_access(user_id)
+        if lang == "fa":
+            t = (f"🔐 <b>لینک اختصاصی راه‌انداز ربات</b>\n\n"
+                 f"🔗 لینک:\n<code>{link}</code>\n\n"
+                 f"🔑 رمز دسترسی:\n<code>{password}</code>\n\n"
+                 f"⏱ اعتبار: ۶ ساعت\n"
+                 f"⚠️ این لینک و رمز فقط برای توست. بعد از ورود، کد ربات را آپلود/بچسبان و اجرا کن.\n"
+                 f"تیک «همیشه روشن» = بعد از ریستارت پنل هم دوباره بالا می‌آید.")
+        else:
+            t = (f"🔐 <b>Private Bot-Runner Link</b>\n\n"
+                 f"🔗 Link:\n<code>{link}</code>\n\n"
+                 f"🔑 Password:\n<code>{password}</code>\n\n"
+                 f"⏱ Valid: 6 hours\n"
+                 f"⚠️ Unique for you. Upload/paste bot code and run.\n"
+                 f"Permanent toggle = auto-restart after panel restart.")
+        await tg_edit(chat_id, message_id, t, reply_markup=ikb([[("🔄 لینک جدید", "open_runner"), (home, "menu")]]))
         return
 
     if data.startswith("botinfo:"):
         bid = data[8:]
         info = load_bots_data().get(bid, {})
-        running = bid in RUNNING_BOTS
+        running = await is_bot_alive(bid)
         status = "🟢 در حال اجرا" if running else "🔴 خاموش"
         perm = "بله ♾️" if info.get("permanent") else "خیر"
         t = f"🤖 <b>{bid}</b>\n\nوضعیت: {status}\nهمیشه روشن: {perm}\nشروع: {str(info.get('started_at', '-'))[:19]}"
@@ -469,7 +636,7 @@ async def handle_callback(cq):
 
     if data.startswith("botstop:"):
         bid = data[8:]
-        await stop_user_bot(bid)
+        await stop_user_bot(bid, clear_permanent=True)
         await tg_edit(chat_id, message_id, "✅ ربات خاموش شد", reply_markup=ikb([[("📋", "bots_menu"), (home, "menu")]]))
         return
 
@@ -485,7 +652,7 @@ async def handle_callback(cq):
 
     if data.startswith("botdel:"):
         bid = data[7:]
-        await stop_user_bot(bid)
+        await stop_user_bot(bid, clear_permanent=True)
         data_bots = load_bots_data()
         data_bots.pop(bid, None)
         save_bots_data(data_bots)
@@ -895,7 +1062,7 @@ async def run_user_bot(
     code_text: str = Form(""),
     is_permanent: str = Form("off"),
     code_file: UploadFile = File(None),
-    _=Depends(require_auth)          # <--- امنیت: فقط ادمین لاگین‌شده
+    _=Depends(require_auth)
 ):
     permanent = is_permanent.lower() in ("on", "true", "1", "yes")
     code = code_text.strip()
@@ -910,25 +1077,35 @@ async def run_user_bot(
         return JSONResponse({"success": False, "message": "❌ توکن نامعتبر است", "logs": ""})
 
     bot_id = "bot_" + secrets.token_hex(4)
-    await install_telegram_deps()
     ok, msg = await start_user_bot(bot_id, code, token, permanent=permanent)
 
+    # کمی صبر برای پر شدن لاگ اولیه
+    await asyncio.sleep(0.8)
     logs = ""
     log_path = BOTS_DIR / bot_id / "bot.log"
     if log_path.exists():
         try:
-            logs = log_path.read_text(encoding="utf-8")[-4000:]
+            logs = log_path.read_text(encoding="utf-8", errors="ignore")[-4000:]
         except Exception:
             pass
 
     if ok:
+        still = await is_bot_alive(bot_id)
+        extra = " | حالت همیشه روشن فعال است (بعد از ریستارت پنل هم برمی‌گردد)" if permanent else ""
+        if not still:
+            return JSONResponse({
+                "success": False,
+                "message": f"❌ ربات شروع شد ولی بلافاصله متوقف شد. لاگ را ببینید.",
+                "logs": logs or msg,
+                "bot_id": bot_id
+            })
         return JSONResponse({
             "success": True,
-            "message": f"✅ ربات با موفقیت اجرا شد (ID: {bot_id})" + (" | حالت همیشه روشن فعال است" if permanent else ""),
+            "message": f"✅ ربات با موفقیت اجرا شد (ID: {bot_id}){extra}",
             "logs": logs or "ربات در حال اجرا است...",
             "bot_id": bot_id
         })
-    return JSONResponse({"success": False, "message": f"❌ خطا: {msg}", "logs": logs})
+    return JSONResponse({"success": False, "message": f"❌ خطا: {msg}", "logs": logs or msg})
 
 @app.get("/api/user/bots")
 async def list_user_bots(_=Depends(require_auth)):
@@ -938,7 +1115,7 @@ async def list_user_bots(_=Depends(require_auth)):
         result.append({
             "id": bid,
             "permanent": info.get("permanent", False),
-            "active": bid in RUNNING_BOTS,
+            "active": await is_bot_alive(bid),
             "started_at": info.get("started_at"),
             "token_preview": (info.get("token") or "")[:12] + "..."
         })
@@ -946,17 +1123,30 @@ async def list_user_bots(_=Depends(require_auth)):
 
 @app.post("/api/user/bots/{bot_id}/stop")
 async def api_stop_bot(bot_id: str, _=Depends(require_auth)):
-    await stop_user_bot(bot_id)
+    await stop_user_bot(bot_id, clear_permanent=True)
     return {"ok": True}
 
 @app.delete("/api/user/bots/{bot_id}")
 async def api_delete_bot(bot_id: str, _=Depends(require_auth)):
-    await stop_user_bot(bot_id)
+    await stop_user_bot(bot_id, clear_permanent=True)
     data = load_bots_data()
     data.pop(bot_id, None)
     save_bots_data(data)
     shutil.rmtree(BOTS_DIR / bot_id, ignore_errors=True)
     return {"ok": True}
+
+@app.post("/api/bot-runner/auth")
+async def bot_runner_auth(request: Request):
+    """تأیید رمز لینک اختصاصی و صدور کوکی سشن موقت"""
+    body = await request.json()
+    key = (body.get("key") or "").strip()
+    password = (body.get("password") or "").strip()
+    if not await validate_bot_runner_access(key, password):
+        raise HTTPException(401, "رمز یا لینک نامعتبر / منقضی شده")
+    session_token = await grant_bot_runner_session(key)
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie(SESSION_COOKIE, session_token, max_age=BOT_RUNNER_ACCESS_TTL, httponly=True, samesite="lax", path="/")
+    return resp
 
 # ===================== SUB =====================
 @app.get("/sub/{uid}")
@@ -1116,7 +1306,7 @@ BOT_RUNNER_HTML = r"""<!DOCTYPE html>
 <html dir="rtl" lang="fa">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🚀 راه‌انداز ربات تلگرام | VROOM (Admin)</title>
+<title>🚀 راه‌انداز ربات تلگرام | VROOM</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px}
@@ -1150,16 +1340,30 @@ textarea.form-control{min-height:150px;font-family:monospace;direction:ltr}
 .logs-box pre{background:rgba(0,0,0,0.5);color:#e2e8f0;padding:12px;border-radius:8px;max-height:280px;overflow-y:auto;direction:ltr;text-align:left;font-size:12px}
 .info-box{background:rgba(255,255,255,0.03);border-radius:10px;padding:12px;margin-top:16px;border-right:4px solid #667eea;color:#a0aec0;font-size:12px;line-height:1.7}
 .sec-badge{display:inline-block;background:rgba(104,211,145,0.15);color:#68d391;padding:4px 10px;border-radius:20px;font-size:11px;margin-bottom:10px}
+#gateBox,#mainBox{display:none}
 </style>
 </head>
 <body>
 <div class="container">
 <div class="header">
-<div class="sec-badge">🔒 فقط ادمین · نیاز به لاگین</div>
+<div class="sec-badge">🔐 دسترسی با لینک + رمز اختصاصی</div>
 <h1>🤖 راه‌انداز ربات تلگرام</h1>
 <p>کد ربات خود را آپلود کنید و اجرا کنید (VROOM v5.8)</p>
 </div>
 <div class="alert" id="alertMessage"></div>
+
+<!-- دروازه ورود با رمز -->
+<div id="gateBox">
+<div class="form-group">
+<label>🔑 رمز دسترسی (از ربات تلگرام گرفته‌اید):</label>
+<input class="form-control" id="accessPassword" type="password" placeholder="رمز یکتای لینک" autocomplete="off">
+</div>
+<button type="button" class="btn-submit" id="gateBtn">ورود به راه‌انداز</button>
+<div class="info-box" style="margin-top:14px">لینک و رمز را از منوی «ربات‌های سفارشی» در ربات تلگرام دریافت کنید. هر لینک رمز اختصاصی خودش را دارد و ۶ ساعت معتبر است.</div>
+</div>
+
+<!-- فرم اصلی بعد از ورود -->
+<div id="mainBox">
 <form id="mainForm">
 <div class="form-group">
 <label>📄 نوع کد:</label>
@@ -1188,7 +1392,7 @@ textarea.form-control{min-height:150px;font-family:monospace;direction:ltr}
 <div class="toggle-container">
 <div style="flex:1">
 <div style="color:#e2e8f0;font-weight:600;font-size:13px">🔄 حالت همیشه روشن</div>
-<div style="color:#718096;font-size:11px">اگر فعال باشد ربات ۲۴ ساعته روشن می‌ماند و بعد از ریستارت هم برمی‌گردد</div>
+<div style="color:#718096;font-size:11px">اگر فعال باشد ربات ۲۴ ساعته روشن می‌ماند و بعد از ریستارت پنل هم برمی‌گردد</div>
 </div>
 <label class="toggle-switch">
 <input type="checkbox" id="permanentToggle">
@@ -1200,16 +1404,44 @@ textarea.form-control{min-height:150px;font-family:monospace;direction:ltr}
 <button type="submit" class="btn-submit" id="submitBtn">🚀 بررسی و اجرا</button>
 </form>
 <div class="info-box">
-⚡ این صفحه فقط برای ادمین لاگین‌شده در دسترس است.<br>
-🔒 وابستگی‌های تلگرام به صورت خودکار نصب می‌شوند.<br>
-⏱️ تیک همیشه روشن = ربات بعد از ریستارت پنل هم دوباره اجرا می‌شود.
+⚡ وابستگی‌های تلگرام به صورت خودکار نصب می‌شوند.<br>
+⏱️ تیک همیشه روشن = ربات بعد از ریستارت پنل هم دوباره اجرا می‌شود و اگر کرش کند دوباره بالا می‌آید.<br>
+📋 بعد از اجرا لاگ را بخوانید؛ اگر خطا بود متن خطا را می‌بینید.
 </div>
 <div class="result-container" id="resultContainer">
 <div id="resultStatus" style="padding:12px;border-radius:10px;text-align:center;font-weight:600;margin-bottom:10px"></div>
 <div class="logs-box"><div style="color:#a0aec0;margin-bottom:6px;font-size:12px">📋 لاگ‌ها:</div><pre id="resultLogs"></pre></div>
 </div>
 </div>
+</div>
 <script>
+const params=new URLSearchParams(location.search);
+const accessKey=params.get('key')||'';
+const gateBox=document.getElementById('gateBox'),mainBox=document.getElementById('mainBox');
+
+async function checkAuth(){
+  try{
+    const r=await fetch('/api/me',{credentials:'include'});
+    const d=await r.json();
+    if(d.authenticated){gateBox.style.display='none';mainBox.style.display='block';return true}
+  }catch(e){}
+  if(accessKey){gateBox.style.display='block';mainBox.style.display='none'}
+  else{gateBox.style.display='block';mainBox.style.display='none'}
+  return false;
+}
+checkAuth();
+
+document.getElementById('gateBtn').onclick=async()=>{
+  const pw=document.getElementById('accessPassword').value.trim();
+  if(!accessKey){alert('لینک نامعتبر است. از ربات تلگرام لینک جدید بگیرید.');return}
+  if(!pw){alert('رمز را وارد کنید');return}
+  try{
+    const r=await fetch('/api/bot-runner/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:accessKey,password:pw}),credentials:'include'});
+    if(!r.ok){const t=await r.text();alert('رمز اشتباه یا لینک منقضی شده');return}
+    gateBox.style.display='none';mainBox.style.display='block';
+  }catch(e){alert('خطا در ارتباط')}
+};
+
 const form=document.getElementById('mainForm'),codeType=document.getElementById('codeType'),fileInput=document.getElementById('fileInput'),dropZone=document.getElementById('dropZone'),permanentToggle=document.getElementById('permanentToggle'),toggleStatus=document.getElementById('toggleStatus');
 codeType.onchange=()=>{document.getElementById('fileInputGroup').style.display=codeType.value==='file'?'block':'none';document.getElementById('textInputGroup').style.display=codeType.value==='text'?'block':'none'};
 permanentToggle.onchange=()=>{toggleStatus.textContent=permanentToggle.checked?'فعال':'خاموش';toggleStatus.style.color=permanentToggle.checked?'#68d391':'#fc8181'};
@@ -1226,7 +1458,7 @@ if(codeType.value==='file'&&fileInput.files[0]){fd.append('code_file',fileInput.
 else{fd.append('code_text',document.getElementById('codeText').value)}
 try{
 const r=await fetch('/api/user/run-bot',{method:'POST',body:fd,credentials:'include'});
-if(r.status===401){alert('ابتدا وارد داشبورد شوید');location.href='/login';return}
+if(r.status===401){alert('نشست منقضی شده. دوباره با رمز وارد شوید.');gateBox.style.display='block';mainBox.style.display='none';return}
 const d=await r.json();
 document.getElementById('resultContainer').classList.add('show');
 const st=document.getElementById('resultStatus');
@@ -1241,10 +1473,15 @@ btn.disabled=false;btn.textContent='🚀 بررسی و اجرا';
 
 @app.get("/bot-runner", response_class=HTMLResponse)
 async def bot_runner_page(request: Request):
-    # امنیت: فقط ادمین لاگین‌شده
-    if not await is_valid_session(request.cookies.get(SESSION_COOKIE)):
-        return RedirectResponse("/login")
-    return HTMLResponse(BOT_RUNNER_HTML)
+    # اگر سشن معتبر دارد مستقیم صفحه را بده
+    if await is_valid_session(request.cookies.get(SESSION_COOKIE)):
+        return HTMLResponse(BOT_RUNNER_HTML)
+    # اگر key در URL هست صفحه را بده تا کاربر رمز را وارد کند
+    key = request.query_params.get("key")
+    if key and await validate_bot_runner_access(key):
+        return HTMLResponse(BOT_RUNNER_HTML)
+    # در غیر این صورت به لاگین اصلی هدایت
+    return RedirectResponse("/login")
 
 # ===================== LOGIN + DASHBOARD (original style) =====================
 LOGIN_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl" data-theme="light"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VROOM</title>
