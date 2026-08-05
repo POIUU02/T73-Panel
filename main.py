@@ -116,7 +116,7 @@ def _wrap_bot_code(code: str, token: str) -> str:
 
 async def start_user_bot(bot_id: str, code: str, token: str, permanent: bool = False):
     await install_telegram_deps()
-    bot_dir = BOTS_DIR / bot_id
+    bot_dir = (BOTS_DIR / bot_id).resolve()
     bot_dir.mkdir(parents=True, exist_ok=True)
     code_file = bot_dir / "bot.py"
     log_file = bot_dir / "bot.log"
@@ -147,8 +147,9 @@ async def start_user_bot(bot_id: str, code: str, token: str, permanent: bool = F
         log_handle = open(log_file, "a", encoding="utf-8")
         log_handle.write(f"\n===== START {datetime.now().isoformat()} permanent={permanent} =====\n")
         log_handle.flush()
+        # فقط "bot.py" — چون cwd همان پوشه ربات است (جلوگیری از مسیر دوبل)
         proc = subprocess.Popen(
-            [sys.executable, "-u", str(code_file)],
+            [sys.executable, "-u", "bot.py"],
             cwd=str(bot_dir),
             stdout=log_handle,
             stderr=subprocess.STDOUT,
