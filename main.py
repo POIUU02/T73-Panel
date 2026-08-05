@@ -389,26 +389,59 @@ async def get_runner_id_from_key(key: str) -> str:
             return rid
     return ""
 
+# سشن جدا برای پنل کاربر (جدا از ادمین)
+RUNNER_SESSIONS = {}  # token -> {"exp": ts, "runner_id": str}
+RUNNER_SESSIONS_LOCK = asyncio.Lock()
+RUNNER_COOKIE = "vroom_runner"
+RUNNER_SESSION_TTL = 60 * 60 * 12  # ۱۲ ساعت — هر بار باید رمز بزند اگر کوکی پاک شود
+
 async def grant_bot_runner_session(key: str) -> str:
-    """بعد از تأیید رمز، سشن موقت + ذخیره runner_id در سشن"""
+    """سشن جداگانه فقط برای پنل کاربر — به داشبورد ادمین دسترسی نمی‌دهد"""
     t = secrets.token_urlsafe(32)
     runner_id = await get_runner_id_from_key(key)
-    ttl = BOT_RUNNER_ACCESS_TTL
-    # اگر حساب دائمی بود TTL بلندتر
-    if runner_id:
-        runners = load_runners()
-        if runners.get(runner_id, {}).get("access_key") == key:
-            ttl = 60 * 60 * 24 * 30  # ۳۰ روز
-    async with SESSIONS_LOCK:
-        SESSIONS[t] = time.time() + ttl
-        # نگاشت سشن به runner
-        SESSIONS[t + "_runner"] = runner_id or ""
+    async with RUNNER_SESSIONS_LOCK:
+        now = time.time()
+        expired = [k for k, v in RUNNER_SESSIONS.items() if v.get("exp", 0) < now]
+        for k in expired:
+            RUNNER_SESSIONS.pop(k, None)
+        RUNNER_SESSIONS[t] = {"exp": now + RUNNER_SESSION_TTL, "runner_id": runner_id or ""}
     return t
 
+async def is_valid_runner_session(token: str) -> bool:
+    if not token:
+        return False
+    async with RUNNER_SESSIONS_LOCK:
+        info = RUNNER_SESSIONS.get(token)
+        if not info or info.get("exp", 0) < time.time():
+            RUNNER_SESSIONS.pop(token, None)
+            return False
+        return True
+
 def get_session_runner_id(session_token: str) -> str:
+    """از کوکی runner یا (سازگاری قدیمی) از SESSIONS"""
     if not session_token:
         return ""
+    info = RUNNER_SESSIONS.get(session_token)
+    if info:
+        return info.get("runner_id") or ""
     return SESSIONS.get(session_token + "_runner") or ""
+
+async def require_runner_or_admin(request: Request):
+    """ادمین داشبورد یا کاربر لینک — پنل‌ها جدا هستند"""
+    admin_ok = await is_valid_session(request.cookies.get(SESSION_COOKIE))
+    runner_tok = request.cookies.get(RUNNER_COOKIE)
+    runner_ok = await is_valid_runner_session(runner_tok)
+    if not admin_ok and not runner_ok:
+        raise HTTPException(401, "unauthorized")
+    return True
+
+def get_owner_from_request(request: Request) -> str:
+    """اگر کاربر لینک باشد owner_id برمی‌گردد؛ ادمین = خالی (همه را می‌بیند)"""
+    runner_tok = request.cookies.get(RUNNER_COOKIE) or ""
+    rid = get_session_runner_id(runner_tok)
+    if rid:
+        return rid
+    return ""
 
 # ===================== LIFESPAN =====================
 @asynccontextmanager
@@ -745,15 +778,52 @@ async def handle_callback(cq):
         return
 
     if data == "new_runner":
-        # ساخت سریع حساب با پیش‌فرض
+        TG_STATE[user_id] = {"step": "rn_max", "lang": lang}
+        await tg_edit(chat_id, message_id, "🤖 سقف تعداد پروژه؟", reply_markup=ikb([
+            [("1", "rn_max:1"), ("2", "rn_max:2"), ("3", "rn_max:3")],
+            [("5", "rn_max:5"), ("10", "rn_max:10"), ("∞", "rn_max:0")],
+            [("❌", "bots_menu")]
+        ]))
+        return
+
+    if data.startswith("rn_max:"):
+        st = TG_STATE.get(user_id) or {}
+        st["max_bots"] = int(data[7:] or 1)
+        st["step"] = "rn_days"
+        TG_STATE[user_id] = st
+        await tg_edit(chat_id, message_id, "📅 چند روز اعتبار؟", reply_markup=ikb([
+            [("1 روز", "rn_day:1"), ("7 روز", "rn_day:7"), ("30 روز", "rn_day:30")],
+            [("90 روز", "rn_day:90"), ("∞", "rn_day:0")],
+            [("❌", "bots_menu")]
+        ]))
+        return
+
+    if data.startswith("rn_day:"):
+        st = TG_STATE.get(user_id) or {}
+        st["days"] = float(data[7:] or 0)
+        st["step"] = "rn_hours"
+        TG_STATE[user_id] = st
+        await tg_edit(chat_id, message_id, "⏰ چند ساعت اضافه؟", reply_markup=ikb([
+            [("0", "rn_hr:0"), ("6 ساعت", "rn_hr:6"), ("12 ساعت", "rn_hr:12")],
+            [("24 ساعت", "rn_hr:24")],
+            [("❌", "bots_menu")]
+        ]))
+        return
+
+    if data.startswith("rn_hr:"):
+        st = TG_STATE.get(user_id) or {}
+        hours = float(data[6:] or 0)
+        max_bots = int(st.get("max_bots") or 1)
+        days = float(st.get("days") or 0)
         rid = "run_" + secrets.token_hex(4)
         password = secrets.token_urlsafe(8)
         access_key = secrets.token_urlsafe(16)
         label = "u" + secrets.token_hex(2)
         runners = load_runners()
         runners[rid] = {
-            "label": label, "password": password, "max_bots": 1,
-            "access_key": access_key, "active": True, "expiry": "",
+            "label": label, "password": password, "max_bots": max_bots,
+            "access_key": access_key, "active": True,
+            "expiry": compute_expiry(days, hours),
             "created_at": datetime.now().isoformat(),
         }
         save_runners(runners)
@@ -761,11 +831,16 @@ async def handle_callback(cq):
             BOT_RUNNER_ACCESS[access_key] = {
                 "expires": None, "runner_id": rid, "password": password, "permanent": True,
             }
+        TG_STATE[user_id] = {"lang": st.get("lang", "fa")}
         domain = get_domain()
         link = f"https://{domain}/bot-runner?key={access_key}"
+        exp_txt = runners[rid]["expiry"][:16].replace("T", " ") if runners[rid]["expiry"] else "∞"
         t = (f"✅ <b>حساب ساخته شد</b>\n\n🏷 <code>{label}</code>\n"
-             f"🤖 سقف: ۱ ربات\n\n🔗 لینک:\n<code>{link}</code>\n\n"
-             f"🔑 رمز:\n<code>{password}</code>\n\nاین را به مشتری بده.")
+             f"🤖 سقف پروژه: {max_bots if max_bots else '∞'}\n"
+             f"📅 انقضا: <code>{exp_txt}</code>\n\n"
+             f"🔗 لینک (فقط همین کاربر):\n<code>{link}</code>\n\n"
+             f"🔑 رمز:\n<code>{password}</code>\n\n"
+             f"این لینک به صفحه کاربر دیگر نمی‌رود.")
         await tg_edit(chat_id, message_id, t, reply_markup=ikb([[("➕ یکی دیگر", "new_runner"), ("📋", "bots_menu")], [(home, "menu")]]))
         return
 
@@ -1251,13 +1326,11 @@ async def stop_tg(_=Depends(require_auth)):
 
 # ===================== SECURE BOT RUNNER API (ADMIN ONLY) =====================
 @app.get("/api/user/runner-info")
-async def runner_info(request: Request, _=Depends(require_auth)):
-    """اطلاعات حساب و اسلات‌های باقی‌مانده برای کاربر لینک"""
-    sess = request.cookies.get(SESSION_COOKIE) or ""
-    owner_id = get_session_runner_id(sess)
+async def runner_info(request: Request, _=Depends(require_runner_or_admin)):
+    """اطلاعات حساب و اسلات‌های باقی‌مانده — فقط همان کاربر"""
+    owner_id = get_owner_from_request(request)
     data = load_bots_data()
     if not owner_id:
-        # ادمین داشبورد — بدون محدودیت خاص
         return {"runner_id": "", "label": "admin", "max_bots": 0, "used": len(data), "remaining": -1, "expiry": "", "expired": False}
     runners = load_runners()
     r = runners.get(owner_id) or {}
@@ -1283,7 +1356,7 @@ async def run_user_bot(
     code_text: str = Form(""),
     is_permanent: str = Form("off"),
     code_file: UploadFile = File(None),
-    _=Depends(require_auth)
+    _=Depends(require_runner_or_admin)
 ):
     permanent = is_permanent.lower() in ("on", "true", "1", "yes")
     code = code_text.strip()
@@ -1297,8 +1370,7 @@ async def run_user_bot(
     if not token or len(token) < 20:
         return JSONResponse({"success": False, "message": "❌ توکن نامعتبر است", "logs": ""})
 
-    sess = request.cookies.get(SESSION_COOKIE) or ""
-    owner_id = get_session_runner_id(sess)
+    owner_id = get_owner_from_request(request)
 
     if owner_id:
         runners = load_runners()
@@ -1310,12 +1382,11 @@ async def run_user_bot(
         max_bots = int(rinfo.get("max_bots") or 0)
         if max_bots > 0:
             data = load_bots_data()
-            # همه پروژه‌های ذخیره‌شده (حتی خاموش) اسلات می‌گیرند
             owned = sum(1 for b in data.values() if b.get("owner_id") == owner_id)
             if owned >= max_bots:
                 return JSONResponse({
                     "success": False,
-                    "message": f"❌ سقف تعداد پروژه ({max_bots}) پر است. یکی را حذف کنید یا همان را متوقف/اجرا کنید.",
+                    "message": f"❌ سقف تعداد پروژه ({max_bots}) پر است. یکی را حذف کنید.",
                     "logs": ""
                 })
 
@@ -1350,14 +1421,15 @@ async def run_user_bot(
     return JSONResponse({"success": False, "message": f"❌ خطا: {msg}", "logs": logs or msg})
 
 @app.get("/api/user/bots")
-async def list_user_bots(request: Request, _=Depends(require_auth)):
+async def list_user_bots(request: Request, _=Depends(require_runner_or_admin)):
     data = load_bots_data()
-    sess = request.cookies.get(SESSION_COOKIE) or ""
-    owner_id = get_session_runner_id(sess)
+    owner_id = get_owner_from_request(request)
     result = []
     for bid, info in data.items():
-        if owner_id and info.get("owner_id") != owner_id:
-            continue
+        # جداسازی سخت: کاربر فقط پروژه‌های خودش
+        if owner_id:
+            if info.get("owner_id") != owner_id:
+                continue
         logs = ""
         log_path = BOTS_DIR / bid / "bot.log"
         if log_path.exists():
@@ -1365,7 +1437,6 @@ async def list_user_bots(request: Request, _=Depends(require_auth)):
                 logs = log_path.read_text(encoding="utf-8", errors="ignore")[-3000:]
             except Exception:
                 pass
-        code_preview = (info.get("code") or "")[:400]
         result.append({
             "id": bid,
             "permanent": info.get("permanent", False),
@@ -1373,14 +1444,18 @@ async def list_user_bots(request: Request, _=Depends(require_auth)):
             "started_at": info.get("started_at"),
             "owner_id": info.get("owner_id", ""),
             "token_preview": (info.get("token") or "")[:12] + "...",
-            "code_preview": code_preview,
+            "code_preview": (info.get("code") or "")[:400],
             "logs": logs,
         })
     result.sort(key=lambda x: x.get("started_at") or "", reverse=True)
     return {"bots": result}
 
 @app.get("/api/user/bots/{bot_id}/logs")
-async def api_bot_logs(bot_id: str, _=Depends(require_auth)):
+async def api_bot_logs(bot_id: str, request: Request, _=Depends(require_runner_or_admin)):
+    data = load_bots_data()
+    owner_id = get_owner_from_request(request)
+    if owner_id and data.get(bot_id, {}).get("owner_id") != owner_id:
+        raise HTTPException(403)
     log_path = BOTS_DIR / bot_id / "bot.log"
     logs = ""
     if log_path.exists():
@@ -1388,21 +1463,17 @@ async def api_bot_logs(bot_id: str, _=Depends(require_auth)):
             logs = log_path.read_text(encoding="utf-8", errors="ignore")[-6000:]
         except Exception:
             pass
-    alive = await is_bot_alive(bot_id)
-    return {"logs": logs, "active": alive, "id": bot_id}
+    return {"logs": logs, "active": await is_bot_alive(bot_id), "id": bot_id}
 
 @app.post("/api/user/bots/{bot_id}/stop")
-async def api_stop_bot(bot_id: str, request: Request, _=Depends(require_auth)):
-    # توقف موقت — permanent و کد حفظ می‌شود
+async def api_stop_bot(bot_id: str, request: Request, _=Depends(require_runner_or_admin)):
     data = load_bots_data()
     if bot_id not in data:
         raise HTTPException(404)
-    sess = request.cookies.get(SESSION_COOKIE) or ""
-    owner_id = get_session_runner_id(sess)
+    owner_id = get_owner_from_request(request)
     if owner_id and data[bot_id].get("owner_id") != owner_id:
         raise HTTPException(403)
     await stop_user_bot(bot_id, clear_permanent=False)
-    # active=False ولی permanent و code می‌ماند
     data = load_bots_data()
     if bot_id in data:
         data[bot_id]["active"] = False
@@ -1410,13 +1481,12 @@ async def api_stop_bot(bot_id: str, request: Request, _=Depends(require_auth)):
     return {"ok": True}
 
 @app.post("/api/user/bots/{bot_id}/start")
-async def api_start_bot(bot_id: str, request: Request, _=Depends(require_auth)):
+async def api_start_bot(bot_id: str, request: Request, _=Depends(require_runner_or_admin)):
     data = load_bots_data()
     info = data.get(bot_id)
     if not info:
         raise HTTPException(404, "پروژه پیدا نشد")
-    sess = request.cookies.get(SESSION_COOKIE) or ""
-    owner_id = get_session_runner_id(sess)
+    owner_id = get_owner_from_request(request)
     if owner_id and info.get("owner_id") != owner_id:
         raise HTTPException(403)
     ok, msg = await start_user_bot(
@@ -1434,10 +1504,9 @@ async def api_start_bot(bot_id: str, request: Request, _=Depends(require_auth)):
     return {"ok": ok, "message": msg, "logs": logs, "active": await is_bot_alive(bot_id)}
 
 @app.delete("/api/user/bots/{bot_id}")
-async def api_delete_bot(bot_id: str, request: Request, _=Depends(require_auth)):
+async def api_delete_bot(bot_id: str, request: Request, _=Depends(require_runner_or_admin)):
     data = load_bots_data()
-    sess = request.cookies.get(SESSION_COOKIE) or ""
-    owner_id = get_session_runner_id(sess)
+    owner_id = get_owner_from_request(request)
     if owner_id and data.get(bot_id, {}).get("owner_id") != owner_id:
         raise HTTPException(403)
     await stop_user_bot(bot_id, clear_permanent=True)
@@ -1449,7 +1518,7 @@ async def api_delete_bot(bot_id: str, request: Request, _=Depends(require_auth))
 
 @app.post("/api/bot-runner/auth")
 async def bot_runner_auth(request: Request):
-    """تأیید رمز لینک اختصاصی — رمز اشتباه = ورود ممنوع"""
+    """تأیید رمز — فقط کوکی کاربر (جدا از ادمین). رمز اشتباه = ورود ممنوع"""
     body = await request.json()
     key = (body.get("key") or "").strip()
     password = (body.get("password") or "").strip()
@@ -1458,10 +1527,17 @@ async def bot_runner_auth(request: Request):
     if not await validate_bot_runner_access(key, password):
         raise HTTPException(401, "رمز اشتباه یا لینک منقضی شده")
     session_token = await grant_bot_runner_session(key)
-    max_age = 60 * 60 * 24 * 30
     resp = JSONResponse({"ok": True, "runner_id": await get_runner_id_from_key(key)})
-    resp.set_cookie(SESSION_COOKIE, session_token, max_age=max_age, httponly=True, samesite="lax", path="/")
+    # فقط کوکی runner — نه کوکی ادمین
+    resp.set_cookie(RUNNER_COOKIE, session_token, max_age=RUNNER_SESSION_TTL, httponly=True, samesite="lax", path="/")
     return resp
+
+@app.get("/api/bot-runner/me")
+async def bot_runner_me(request: Request):
+    """آیا کاربر لینک لاگین است؟ (جدا از ادمین)"""
+    tok = request.cookies.get(RUNNER_COOKIE)
+    ok = await is_valid_runner_session(tok)
+    return {"authenticated": ok, "runner_id": get_session_runner_id(tok) if ok else ""}
 
 # ===================== MULTI-USER RUNNER ACCOUNTS (مثل اینباند) =====================
 @app.get("/api/runners")
@@ -1864,22 +1940,13 @@ async function enterMain(){
 }
 
 async function checkAuth(){
-  // همیشه با لینک، اول رمز بخواهد (هر بار ورود امن)
+  // هر بار با لینک → حتماً رمز بپرس (پنل کاربر جدا از ادمین)
   if(accessKey){
-    try{
-      const r=await fetch('/api/me',{credentials:'include'});
-      const d=await r.json();
-      if(d.authenticated){
-        // اگر از قبل سشن دارد، مستقیم وارد شو ولی پروژه‌ها را لود کن
-        await enterMain();
-        return;
-      }
-    }catch(e){}
     gateBox.style.display='block';
     mainBox.style.display='none';
     return;
   }
-  // بدون key فقط اگر سشن ادمین باشد
+  // بدون key فقط ادمین داشبورد
   try{
     const r=await fetch('/api/me',{credentials:'include'});
     const d=await r.json();
@@ -2016,14 +2083,13 @@ btn.disabled=false;btn.textContent='🚀 اجرای پروژه جدید';
 
 @app.get("/bot-runner", response_class=HTMLResponse)
 async def bot_runner_page(request: Request):
-    # اگر سشن معتبر دارد مستقیم صفحه را بده
-    if await is_valid_session(request.cookies.get(SESSION_COOKIE)):
-        return HTMLResponse(BOT_RUNNER_HTML)
-    # اگر key در URL هست صفحه را بده تا کاربر رمز را وارد کند
     key = request.query_params.get("key")
+    # لینک کاربر: فقط با key معتبر — همیشه صفحه رمز نشان داده می‌شود
     if key and await validate_bot_runner_access(key):
         return HTMLResponse(BOT_RUNNER_HTML)
-    # در غیر این صورت به لاگین اصلی هدایت
+    # بدون key: فقط ادمین داشبورد
+    if await is_valid_session(request.cookies.get(SESSION_COOKIE)):
+        return HTMLResponse(BOT_RUNNER_HTML)
     return RedirectResponse("/login")
 
 # ===================== LOGIN + DASHBOARD (original style) =====================
