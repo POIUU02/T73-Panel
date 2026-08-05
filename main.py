@@ -547,12 +547,17 @@ def parse_size_to_bytes(value, unit):
         return int(value * 1024 ** 2)
     return int(value)
 
-def compute_expiry(expiry_days):
+def compute_expiry(expiry_days, expiry_hours=0):
     try:
         days = float(expiry_days or 0)
     except Exception:
         days = 0
-    return "" if days <= 0 else (datetime.now() + timedelta(days=days)).isoformat()
+    try:
+        hours = float(expiry_hours or 0)
+    except Exception:
+        hours = 0
+    total_hours = days * 24 + hours
+    return "" if total_hours <= 0 else (datetime.now() + timedelta(hours=total_hours)).isoformat()
 
 def is_expired(link):
     exp = link.get("expiry") if isinstance(link, dict) else None
@@ -1245,6 +1250,31 @@ async def stop_tg(_=Depends(require_auth)):
     return {"ok": True}
 
 # ===================== SECURE BOT RUNNER API (ADMIN ONLY) =====================
+@app.get("/api/user/runner-info")
+async def runner_info(request: Request, _=Depends(require_auth)):
+    """اطلاعات حساب و اسلات‌های باقی‌مانده برای کاربر لینک"""
+    sess = request.cookies.get(SESSION_COOKIE) or ""
+    owner_id = get_session_runner_id(sess)
+    data = load_bots_data()
+    if not owner_id:
+        # ادمین داشبورد — بدون محدودیت خاص
+        return {"runner_id": "", "label": "admin", "max_bots": 0, "used": len(data), "remaining": -1, "expiry": "", "expired": False}
+    runners = load_runners()
+    r = runners.get(owner_id) or {}
+    owned = [bid for bid, b in data.items() if b.get("owner_id") == owner_id]
+    max_bots = int(r.get("max_bots") or 0)
+    remaining = max(0, max_bots - len(owned)) if max_bots > 0 else -1
+    return {
+        "runner_id": owner_id,
+        "label": r.get("label", owner_id),
+        "max_bots": max_bots,
+        "used": len(owned),
+        "remaining": remaining,
+        "expiry": r.get("expiry", ""),
+        "expired": bool(r.get("expiry") and is_expired({"expiry": r["expiry"]})),
+        "active": r.get("active", True),
+    }
+
 @app.post("/api/user/run-bot")
 async def run_user_bot(
     request: Request,
@@ -1267,11 +1297,9 @@ async def run_user_bot(
     if not token or len(token) < 20:
         return JSONResponse({"success": False, "message": "❌ توکن نامعتبر است", "logs": ""})
 
-    # owner از سشن (حساب راه‌انداز چندکاربره)
     sess = request.cookies.get(SESSION_COOKIE) or ""
     owner_id = get_session_runner_id(sess)
 
-    # محدودیت تعداد ربات برای حساب runner
     if owner_id:
         runners = load_runners()
         rinfo = runners.get(owner_id)
@@ -1282,11 +1310,12 @@ async def run_user_bot(
         max_bots = int(rinfo.get("max_bots") or 0)
         if max_bots > 0:
             data = load_bots_data()
-            owned = sum(1 for b in data.values() if b.get("owner_id") == owner_id and b.get("active"))
+            # همه پروژه‌های ذخیره‌شده (حتی خاموش) اسلات می‌گیرند
+            owned = sum(1 for b in data.values() if b.get("owner_id") == owner_id)
             if owned >= max_bots:
                 return JSONResponse({
                     "success": False,
-                    "message": f"❌ سقف تعداد ربات ({max_bots}) پر شده. یکی را حذف کنید.",
+                    "message": f"❌ سقف تعداد پروژه ({max_bots}) پر است. یکی را حذف کنید یا همان را متوقف/اجرا کنید.",
                     "logs": ""
                 })
 
@@ -1327,26 +1356,90 @@ async def list_user_bots(request: Request, _=Depends(require_auth)):
     owner_id = get_session_runner_id(sess)
     result = []
     for bid, info in data.items():
-        # اگر سشن متعلق به runner باشد فقط ربات‌های خودش
         if owner_id and info.get("owner_id") != owner_id:
             continue
+        logs = ""
+        log_path = BOTS_DIR / bid / "bot.log"
+        if log_path.exists():
+            try:
+                logs = log_path.read_text(encoding="utf-8", errors="ignore")[-3000:]
+            except Exception:
+                pass
+        code_preview = (info.get("code") or "")[:400]
         result.append({
             "id": bid,
             "permanent": info.get("permanent", False),
             "active": await is_bot_alive(bid),
             "started_at": info.get("started_at"),
             "owner_id": info.get("owner_id", ""),
-            "token_preview": (info.get("token") or "")[:12] + "..."
+            "token_preview": (info.get("token") or "")[:12] + "...",
+            "code_preview": code_preview,
+            "logs": logs,
         })
+    result.sort(key=lambda x: x.get("started_at") or "", reverse=True)
     return {"bots": result}
 
+@app.get("/api/user/bots/{bot_id}/logs")
+async def api_bot_logs(bot_id: str, _=Depends(require_auth)):
+    log_path = BOTS_DIR / bot_id / "bot.log"
+    logs = ""
+    if log_path.exists():
+        try:
+            logs = log_path.read_text(encoding="utf-8", errors="ignore")[-6000:]
+        except Exception:
+            pass
+    alive = await is_bot_alive(bot_id)
+    return {"logs": logs, "active": alive, "id": bot_id}
+
 @app.post("/api/user/bots/{bot_id}/stop")
-async def api_stop_bot(bot_id: str, _=Depends(require_auth)):
-    await stop_user_bot(bot_id, clear_permanent=True)
+async def api_stop_bot(bot_id: str, request: Request, _=Depends(require_auth)):
+    # توقف موقت — permanent و کد حفظ می‌شود
+    data = load_bots_data()
+    if bot_id not in data:
+        raise HTTPException(404)
+    sess = request.cookies.get(SESSION_COOKIE) or ""
+    owner_id = get_session_runner_id(sess)
+    if owner_id and data[bot_id].get("owner_id") != owner_id:
+        raise HTTPException(403)
+    await stop_user_bot(bot_id, clear_permanent=False)
+    # active=False ولی permanent و code می‌ماند
+    data = load_bots_data()
+    if bot_id in data:
+        data[bot_id]["active"] = False
+        save_bots_data(data)
     return {"ok": True}
 
+@app.post("/api/user/bots/{bot_id}/start")
+async def api_start_bot(bot_id: str, request: Request, _=Depends(require_auth)):
+    data = load_bots_data()
+    info = data.get(bot_id)
+    if not info:
+        raise HTTPException(404, "پروژه پیدا نشد")
+    sess = request.cookies.get(SESSION_COOKIE) or ""
+    owner_id = get_session_runner_id(sess)
+    if owner_id and info.get("owner_id") != owner_id:
+        raise HTTPException(403)
+    ok, msg = await start_user_bot(
+        bot_id, info.get("code", ""), info.get("token", ""),
+        permanent=info.get("permanent", False),
+        owner_id=info.get("owner_id", "")
+    )
+    logs = ""
+    log_path = BOTS_DIR / bot_id / "bot.log"
+    if log_path.exists():
+        try:
+            logs = log_path.read_text(encoding="utf-8", errors="ignore")[-4000:]
+        except Exception:
+            pass
+    return {"ok": ok, "message": msg, "logs": logs, "active": await is_bot_alive(bot_id)}
+
 @app.delete("/api/user/bots/{bot_id}")
-async def api_delete_bot(bot_id: str, _=Depends(require_auth)):
+async def api_delete_bot(bot_id: str, request: Request, _=Depends(require_auth)):
+    data = load_bots_data()
+    sess = request.cookies.get(SESSION_COOKIE) or ""
+    owner_id = get_session_runner_id(sess)
+    if owner_id and data.get(bot_id, {}).get("owner_id") != owner_id:
+        raise HTTPException(403)
     await stop_user_bot(bot_id, clear_permanent=True)
     data = load_bots_data()
     data.pop(bot_id, None)
@@ -1356,12 +1449,14 @@ async def api_delete_bot(bot_id: str, _=Depends(require_auth)):
 
 @app.post("/api/bot-runner/auth")
 async def bot_runner_auth(request: Request):
-    """تأیید رمز لینک اختصاصی و صدور کوکی سشن"""
+    """تأیید رمز لینک اختصاصی — رمز اشتباه = ورود ممنوع"""
     body = await request.json()
     key = (body.get("key") or "").strip()
     password = (body.get("password") or "").strip()
+    if not key or not password:
+        raise HTTPException(401, "رمز یا لینک نامعتبر")
     if not await validate_bot_runner_access(key, password):
-        raise HTTPException(401, "رمز یا لینک نامعتبر / منقضی شده")
+        raise HTTPException(401, "رمز اشتباه یا لینک منقضی شده")
     session_token = await grant_bot_runner_session(key)
     max_age = 60 * 60 * 24 * 30
     resp = JSONResponse({"ok": True, "runner_id": await get_runner_id_from_key(key)})
@@ -1403,7 +1498,8 @@ async def create_runner(request: Request, _=Depends(require_auth)):
     if not re.match(r"^[a-zA-Z0-9\-_. ]+$", label):
         raise HTTPException(400, "English only for label")
     max_bots = max(0, int(body.get("max_bots") or 1))
-    expiry_days = body.get("expiry_days")
+    expiry_days = body.get("expiry_days") or 0
+    expiry_hours = body.get("expiry_hours") or 0
     password = (body.get("password") or "").strip() or secrets.token_urlsafe(8)
     rid = "run_" + secrets.token_hex(4)
     access_key = secrets.token_urlsafe(16)
@@ -1414,7 +1510,7 @@ async def create_runner(request: Request, _=Depends(require_auth)):
         "max_bots": max_bots,
         "access_key": access_key,
         "active": True,
-        "expiry": compute_expiry(expiry_days) if expiry_days is not None else "",
+        "expiry": compute_expiry(expiry_days, expiry_hours),
         "created_at": datetime.now().isoformat(),
     }
     save_runners(runners)
@@ -1641,21 +1737,27 @@ BOT_RUNNER_HTML = r"""<!DOCTYPE html>
 <title>🚀 راه‌انداز ربات تلگرام | VROOM</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px}
-.container{background:rgba(255,255,255,0.05);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);border-radius:24px;padding:40px;max-width:700px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,0.6)}
-.header{text-align:center;margin-bottom:30px}
-.header h1{font-size:28px;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.header p{color:#a0aec0;font-size:14px;margin-top:6px}
-.form-group{margin-bottom:18px}
+body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);min-height:100vh;padding:20px}
+.container{background:rgba(255,255,255,0.05);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);border-radius:24px;padding:28px;max-width:780px;width:100%;margin:0 auto;box-shadow:0 30px 80px rgba(0,0,0,0.6)}
+.header{text-align:center;margin-bottom:22px}
+.header h1{font-size:24px;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header p{color:#a0aec0;font-size:13px;margin-top:6px}
+.form-group{margin-bottom:14px}
 .form-group label{display:block;color:#e2e8f0;font-weight:600;margin-bottom:6px;font-size:13px}
 .form-control{width:100%;padding:11px 14px;border:2px solid rgba(255,255,255,0.1);border-radius:12px;font-size:14px;background:rgba(255,255,255,0.05);color:#e2e8f0}
 .form-control:focus{outline:none;border-color:#667eea}
-textarea.form-control{min-height:150px;font-family:monospace;direction:ltr}
-.file-upload-wrapper{border:2px dashed rgba(255,255,255,0.15);border-radius:12px;padding:24px;text-align:center;cursor:pointer}
+textarea.form-control{min-height:130px;font-family:monospace;direction:ltr}
+.file-upload-wrapper{border:2px dashed rgba(255,255,255,0.15);border-radius:12px;padding:20px;text-align:center;cursor:pointer}
 .file-upload-wrapper:hover{border-color:#667eea}
 .file-upload-wrapper input{display:none}
-.btn-submit{width:100%;padding:14px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer}
+.btn-submit{width:100%;padding:13px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer}
 .btn-submit:disabled{opacity:0.6}
+.btn-row{display:flex;gap:8px;margin-top:10px}
+.btn-sm{flex:1;padding:10px;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer}
+.btn-stop{background:rgba(252,129,129,0.2);color:#fc8181}
+.btn-start{background:rgba(104,211,145,0.2);color:#68d391}
+.btn-del{background:rgba(252,129,129,0.15);color:#fc8181;padding:6px 10px;border:none;border-radius:8px;font-size:11px;cursor:pointer;font-weight:700}
+.btn-ref{background:rgba(102,126,234,0.2);color:#a3bffa;padding:6px 10px;border:none;border-radius:8px;font-size:11px;cursor:pointer;font-weight:700}
 .toggle-container{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,0.03);border-radius:12px;padding:12px 16px}
 .toggle-switch{position:relative;width:48px;height:26px}
 .toggle-switch input{opacity:0;width:0;height:0}
@@ -1663,58 +1765,66 @@ textarea.form-control{min-height:150px;font-family:monospace;direction:ltr}
 .toggle-slider::before{content:"";position:absolute;height:18px;width:18px;left:4px;bottom:4px;background:#fff;border-radius:50%;transition:.3s}
 .toggle-switch input:checked + .toggle-slider{background:linear-gradient(135deg,#667eea,#764ba2)}
 .toggle-switch input:checked + .toggle-slider::before{transform:translateX(22px)}
-.alert{padding:12px;border-radius:10px;margin-bottom:14px;display:none}
-.alert.show{display:block}
-.alert.error{background:rgba(254,215,215,0.15);color:#fc8181}
-.alert.success{background:rgba(198,246,213,0.15);color:#68d391}
-.result-container{margin-top:18px;display:none}
-.result-container.show{display:block}
-.logs-box pre{background:rgba(0,0,0,0.5);color:#e2e8f0;padding:12px;border-radius:8px;max-height:280px;overflow-y:auto;direction:ltr;text-align:left;font-size:12px}
-.info-box{background:rgba(255,255,255,0.03);border-radius:10px;padding:12px;margin-top:16px;border-right:4px solid #667eea;color:#a0aec0;font-size:12px;line-height:1.7}
+.logs-box pre{background:rgba(0,0,0,0.5);color:#e2e8f0;padding:12px;border-radius:8px;max-height:220px;overflow-y:auto;direction:ltr;text-align:left;font-size:11px;white-space:pre-wrap}
+.info-box{background:rgba(255,255,255,0.03);border-radius:10px;padding:12px;margin:12px 0;border-right:4px solid #667eea;color:#a0aec0;font-size:12px;line-height:1.7}
+.note-box{background:rgba(102,126,234,0.12);border-radius:10px;padding:12px;margin:12px 0;border-right:4px solid #f6ad55;color:#fbd38d;font-size:12px;line-height:1.7}
 .sec-badge{display:inline-block;background:rgba(104,211,145,0.15);color:#68d391;padding:4px 10px;border-radius:20px;font-size:11px;margin-bottom:10px}
+.slot-bar{background:rgba(255,255,255,0.05);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#e2e8f0}
+.bot-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px;margin-bottom:12px}
+.bot-card h4{color:#e2e8f0;font-size:13px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+.tag{display:inline-block;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700}
+.tag-on{background:rgba(104,211,145,0.2);color:#68d391}
+.tag-off{background:rgba(252,129,129,0.2);color:#fc8181}
+.code-prev{background:rgba(0,0,0,0.35);color:#a0aec0;padding:8px;border-radius:8px;font-size:10px;font-family:monospace;direction:ltr;text-align:left;max-height:70px;overflow:hidden;margin:8px 0}
 #gateBox,#mainBox{display:none}
 </style>
 </head>
 <body>
 <div class="container">
 <div class="header">
-<div class="sec-badge">🔐 دسترسی با لینک + رمز اختصاصی</div>
+<div class="sec-badge">🔐 لینک + رمز اختصاصی</div>
 <h1>🤖 راه‌انداز ربات تلگرام</h1>
-<p>کد ربات خود را آپلود کنید و اجرا کنید (VROOM v5.8)</p>
+<p>پروژه‌های شما ذخیره می‌مانند — با ورود مجدد همان کد و لاگ را می‌بینید</p>
 </div>
-<div class="alert" id="alertMessage"></div>
 
-<!-- دروازه ورود با رمز -->
 <div id="gateBox">
 <div class="form-group">
-<label>🔑 رمز دسترسی (از ربات تلگرام گرفته‌اید):</label>
-<input class="form-control" id="accessPassword" type="password" placeholder="رمز یکتای لینک" autocomplete="off">
+<label>🔑 رمز دسترسی:</label>
+<input class="form-control" id="accessPassword" type="password" placeholder="رمز اختصاصی لینک" autocomplete="off">
 </div>
-<button type="button" class="btn-submit" id="gateBtn">ورود به راه‌انداز</button>
-<div class="info-box" style="margin-top:14px">لینک و رمز را از منوی «ربات‌های سفارشی» در ربات تلگرام دریافت کنید. هر لینک رمز اختصاصی خودش را دارد و ۶ ساعت معتبر است.</div>
+<button type="button" class="btn-submit" id="gateBtn">ورود</button>
+<div class="info-box" style="margin-top:14px">رمز اشتباه = ورود ممنوع. لینک و رمز را از ادمین بگیرید.</div>
 </div>
 
-<!-- فرم اصلی بعد از ورود -->
 <div id="mainBox">
+<div class="slot-bar" id="slotBar">در حال بارگذاری اسلات‌ها...</div>
+
+<div id="botsList"></div>
+
+<div class="note-box">
+📝 <b>یادداشت:</b> اگر می‌خواهید <b>پروژه جدید</b> بگذارید، کد متنی یا فایل جدید را در فرم زیر قرار دهید و اجرا کنید — خودکار روشن می‌شود.<br>
+پروژه‌های قبلی همین‌جا می‌مانند (کد + لاگ). با «متوقف» خاموش و با «اجرا» دوباره روشن می‌شوند.
+</div>
+
 <form id="mainForm">
 <div class="form-group">
-<label>📄 نوع کد:</label>
+<label>📄 نوع کد (پروژه جدید):</label>
 <select class="form-control" id="codeType">
-<option value="file">📁 آپلود فایل (پایتون)</option>
+<option value="file">📁 آپلود فایل</option>
 <option value="text">✏️ چسباندن کد</option>
 </select>
 </div>
 <div class="form-group" id="fileInputGroup">
 <div class="file-upload-wrapper" id="dropZone">
 <input type="file" id="fileInput" accept=".py,.txt">
-<div style="font-size:36px">📤</div>
-<div style="color:#a0aec0">کلیک کنید یا فایل را بکشید</div>
+<div style="font-size:32px">📤</div>
+<div style="color:#a0aec0">کلیک یا کشیدن فایل</div>
 <div id="fileNameDisplay" style="color:#667eea;margin-top:6px;display:none"></div>
 </div>
 </div>
 <div class="form-group" id="textInputGroup" style="display:none">
 <label>✏️ کد ربات:</label>
-<textarea class="form-control" id="codeText" placeholder="# کد خود را اینجا بچسبانید..."></textarea>
+<textarea class="form-control" id="codeText" placeholder="# کد جدید..."></textarea>
 </div>
 <div class="form-group">
 <label>🔑 توکن ربات تلگرام:</label>
@@ -1723,26 +1833,21 @@ textarea.form-control{min-height:150px;font-family:monospace;direction:ltr}
 <div class="form-group">
 <div class="toggle-container">
 <div style="flex:1">
-<div style="color:#e2e8f0;font-weight:600;font-size:13px">🔄 حالت همیشه روشن</div>
-<div style="color:#718096;font-size:11px">اگر فعال باشد ربات ۲۴ ساعته روشن می‌ماند و بعد از ریستارت پنل هم برمی‌گردد</div>
+<div style="color:#e2e8f0;font-weight:600;font-size:13px">🔄 همیشه روشن</div>
+<div style="color:#718096;font-size:11px">بعد از ریستارت پنل و در صورت کرش دوباره بالا می‌آید</div>
 </div>
 <label class="toggle-switch">
-<input type="checkbox" id="permanentToggle">
+<input type="checkbox" id="permanentToggle" checked>
 <span class="toggle-slider"></span>
 </label>
-<span id="toggleStatus" style="color:#fc8181;font-size:12px;min-width:45px">خاموش</span>
+<span id="toggleStatus" style="color:#68d391;font-size:12px;min-width:45px">فعال</span>
 </div>
 </div>
-<button type="submit" class="btn-submit" id="submitBtn">🚀 بررسی و اجرا</button>
+<button type="submit" class="btn-submit" id="submitBtn">🚀 اجرای پروژه جدید</button>
 </form>
-<div class="info-box">
-⚡ وابستگی‌های تلگرام به صورت خودکار نصب می‌شوند.<br>
-⏱️ تیک همیشه روشن = ربات بعد از ریستارت پنل هم دوباره اجرا می‌شود و اگر کرش کند دوباره بالا می‌آید.<br>
-📋 بعد از اجرا لاگ را بخوانید؛ اگر خطا بود متن خطا را می‌بینید.
-</div>
-<div class="result-container" id="resultContainer">
-<div id="resultStatus" style="padding:12px;border-radius:10px;text-align:center;font-weight:600;margin-bottom:10px"></div>
-<div class="logs-box"><div style="color:#a0aec0;margin-bottom:6px;font-size:12px">📋 لاگ‌ها:</div><pre id="resultLogs"></pre></div>
+<div id="resultBox" style="margin-top:12px;display:none">
+<div id="resultStatus" style="padding:10px;border-radius:10px;text-align:center;font-weight:600;margin-bottom:8px;font-size:13px"></div>
+<div class="logs-box"><pre id="resultLogs"></pre></div>
 </div>
 </div>
 </div>
@@ -1751,28 +1856,133 @@ const params=new URLSearchParams(location.search);
 const accessKey=params.get('key')||'';
 const gateBox=document.getElementById('gateBox'),mainBox=document.getElementById('mainBox');
 
+async function enterMain(){
+  gateBox.style.display='none';
+  mainBox.style.display='block';
+  await refreshAll();
+  setInterval(refreshLogsOnly, 8000);
+}
+
 async function checkAuth(){
+  // همیشه با لینک، اول رمز بخواهد (هر بار ورود امن)
+  if(accessKey){
+    try{
+      const r=await fetch('/api/me',{credentials:'include'});
+      const d=await r.json();
+      if(d.authenticated){
+        // اگر از قبل سشن دارد، مستقیم وارد شو ولی پروژه‌ها را لود کن
+        await enterMain();
+        return;
+      }
+    }catch(e){}
+    gateBox.style.display='block';
+    mainBox.style.display='none';
+    return;
+  }
+  // بدون key فقط اگر سشن ادمین باشد
   try{
     const r=await fetch('/api/me',{credentials:'include'});
     const d=await r.json();
-    if(d.authenticated){gateBox.style.display='none';mainBox.style.display='block';return true}
+    if(d.authenticated){await enterMain();return}
   }catch(e){}
-  if(accessKey){gateBox.style.display='block';mainBox.style.display='none'}
-  else{gateBox.style.display='block';mainBox.style.display='none'}
-  return false;
+  gateBox.style.display='block';
 }
 checkAuth();
 
 document.getElementById('gateBtn').onclick=async()=>{
   const pw=document.getElementById('accessPassword').value.trim();
-  if(!accessKey){alert('لینک نامعتبر است. از ربات تلگرام لینک جدید بگیرید.');return}
+  if(!accessKey){alert('لینک نامعتبر است');return}
   if(!pw){alert('رمز را وارد کنید');return}
   try{
     const r=await fetch('/api/bot-runner/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:accessKey,password:pw}),credentials:'include'});
-    if(!r.ok){const t=await r.text();alert('رمز اشتباه یا لینک منقضی شده');return}
-    gateBox.style.display='none';mainBox.style.display='block';
+    if(!r.ok){alert('❌ رمز اشتباه یا لینک منقضی — ورود نشد');return}
+    await enterMain();
   }catch(e){alert('خطا در ارتباط')}
 };
+
+async function refreshAll(){
+  try{
+    const [ri,rb]=await Promise.all([
+      fetch('/api/user/runner-info',{credentials:'include'}),
+      fetch('/api/user/bots',{credentials:'include'})
+    ]);
+    if(ri.status===401||rb.status===401){
+      gateBox.style.display='block';mainBox.style.display='none';return;
+    }
+    const info=await ri.json();
+    const bots=(await rb.json()).bots||[];
+    const max=info.max_bots||0;
+    const used=info.used||0;
+    const rem=info.remaining;
+    let slotTxt=`👤 ${info.label||'کاربر'} · پروژه: ${used}`+(max?` / ${max}`:'')+(rem>=0?` · باقی‌مانده: ${rem}`:'');
+    if(info.expiry) slotTxt+=` · انقضا: ${String(info.expiry).slice(0,16).replace('T',' ')}`;
+    if(info.expired) slotTxt+=' · ⚠️ منقضی';
+    document.getElementById('slotBar').textContent=slotTxt;
+
+    const box=document.getElementById('botsList');
+    if(!bots.length){
+      box.innerHTML='<div class="info-box">هنوز پروژه‌ای ندارید. کد را در فرم زیر بگذارید و اجرا کنید.</div>';
+    }else{
+      box.innerHTML=bots.map(b=>`
+        <div class="bot-card" data-id="${b.id}">
+          <h4>
+            <span>${b.active?'🟢':'🔴'} ${b.id} ${b.permanent?'♾️':''}</span>
+            <span class="tag ${b.active?'tag-on':'tag-off'}">${b.active?'در حال اجرا':'متوقف'}</span>
+          </h4>
+          <div class="code-prev">${(b.code_preview||'').replace(/</g,'&lt;')}</div>
+          <div class="btn-row">
+            <button type="button" class="btn-sm btn-stop" onclick="stopBot('${b.id}')">⏹ متوقف</button>
+            <button type="button" class="btn-sm btn-start" onclick="startBot('${b.id}')">▶️ اجرا</button>
+          </div>
+          <div style="margin-top:8px;display:flex;gap:6px">
+            <button type="button" class="btn-ref" onclick="refreshBotLogs('${b.id}')">🔄 بروزرسانی لاگ</button>
+            <button type="button" class="btn-del" onclick="delBot('${b.id}')">🗑 حذف پروژه</button>
+          </div>
+          <div class="logs-box" style="margin-top:8px"><pre id="log-${b.id}">${(b.logs||'لاگی نیست').replace(/</g,'&lt;')}</pre></div>
+        </div>`).join('');
+    }
+    // اگر اسلات پر است فرم را کم‌رنگ کن
+    const form=document.getElementById('mainForm');
+    if(rem===0){form.style.opacity='0.55';document.getElementById('submitBtn').disabled=true;document.getElementById('submitBtn').textContent='سقف پروژه پر است — یکی را حذف کنید'}
+    else{form.style.opacity='1';document.getElementById('submitBtn').disabled=false;document.getElementById('submitBtn').textContent='🚀 اجرای پروژه جدید'}
+  }catch(e){console.error(e)}
+}
+
+async function refreshLogsOnly(){
+  const cards=document.querySelectorAll('.bot-card[data-id]');
+  for(const c of cards){
+    const id=c.dataset.id;
+    try{
+      const r=await fetch('/api/user/bots/'+id+'/logs',{credentials:'include'});
+      if(!r.ok)continue;
+      const d=await r.json();
+      const pre=document.getElementById('log-'+id);
+      if(pre)pre.textContent=d.logs||'لاگی نیست';
+    }catch(e){}
+  }
+}
+
+async function stopBot(id){
+  await fetch('/api/user/bots/'+id+'/stop',{method:'POST',credentials:'include'});
+  await refreshAll();
+}
+async function startBot(id){
+  const r=await fetch('/api/user/bots/'+id+'/start',{method:'POST',credentials:'include'});
+  const d=await r.json().catch(()=>({}));
+  if(d.logs){const pre=document.getElementById('log-'+id);if(pre)pre.textContent=d.logs}
+  await refreshAll();
+}
+async function delBot(id){
+  if(!confirm('حذف کامل این پروژه؟'))return;
+  await fetch('/api/user/bots/'+id,{method:'DELETE',credentials:'include'});
+  await refreshAll();
+}
+async function refreshBotLogs(id){
+  const r=await fetch('/api/user/bots/'+id+'/logs',{credentials:'include'});
+  const d=await r.json();
+  const pre=document.getElementById('log-'+id);
+  if(pre)pre.textContent=d.logs||'لاگی نیست';
+}
 
 const form=document.getElementById('mainForm'),codeType=document.getElementById('codeType'),fileInput=document.getElementById('fileInput'),dropZone=document.getElementById('dropZone'),permanentToggle=document.getElementById('permanentToggle'),toggleStatus=document.getElementById('toggleStatus');
 codeType.onchange=()=>{document.getElementById('fileInputGroup').style.display=codeType.value==='file'?'block':'none';document.getElementById('textInputGroup').style.display=codeType.value==='text'?'block':'none'};
@@ -1790,14 +2000,15 @@ if(codeType.value==='file'&&fileInput.files[0]){fd.append('code_file',fileInput.
 else{fd.append('code_text',document.getElementById('codeText').value)}
 try{
 const r=await fetch('/api/user/run-bot',{method:'POST',body:fd,credentials:'include'});
-if(r.status===401){alert('نشست منقضی شده. دوباره با رمز وارد شوید.');gateBox.style.display='block';mainBox.style.display='none';return}
+if(r.status===401){alert('نشست منقضی — دوباره رمز بزنید');gateBox.style.display='block';mainBox.style.display='none';return}
 const d=await r.json();
-document.getElementById('resultContainer').classList.add('show');
+const rb=document.getElementById('resultBox');rb.style.display='block';
 const st=document.getElementById('resultStatus');
 st.textContent=d.message;st.style.background=d.success?'rgba(198,246,213,0.15)':'rgba(254,215,215,0.15)';st.style.color=d.success?'#68d391':'#fc8181';
-document.getElementById('resultLogs').textContent=d.logs||'خروجی خاصی وجود ندارد.';
-}catch(err){alert('خطا در ارتباط با سرور')}
-btn.disabled=false;btn.textContent='🚀 بررسی و اجرا';
+document.getElementById('resultLogs').textContent=d.logs||'';
+await refreshAll();
+}catch(err){alert('خطا در ارتباط')}
+btn.disabled=false;btn.textContent='🚀 اجرای پروژه جدید';
 };
 </script>
 </body>
@@ -1959,8 +2170,8 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 <div class="modal-bg" id="addRunnerM" onclick="if(event.target===this)this.classList.remove('show')">
 <div class="modal"><h3 style="color:var(--blue);margin-bottom:8px">حساب راه‌انداز ربات</h3>
 <input id="rn-label" placeholder="نام (مثلا user1)">
-<input id="rn-max" type="number" placeholder="سقف تعداد ربات (مثلا 1 یا 3)" value="1">
-<input id="rn-days" type="number" placeholder="روز اعتبار (خالی = ∞)">
+<input id="rn-max" type="number" placeholder="سقف تعداد پروژه (مثلا 1 یا 3)" value="1">
+<div class="grid2"><input id="rn-days" type="number" placeholder="روز"><input id="rn-hours" type="number" placeholder="ساعت"></div>
 <input id="rn-pass" placeholder="رمز (خالی = خودکار)">
 <button class="btn bg" style="width:100%" onclick="createRunner()">ساخت حساب + لینک</button>
 <div id="rn-result" style="margin-top:10px;font-size:11px;display:none;word-break:break-all"></div>
@@ -2037,9 +2248,10 @@ $('#blist').innerHTML=list.length?list.map(b=>`<div style="display:flex;justify-
 async function createRunner(){
   const label=$('#rn-label').value.trim()||('user'+Math.floor(Math.random()*900+100));
   const max_bots=parseInt($('#rn-max').value)||1;
-  const expiry_days=$('#rn-days').value===''?0:parseFloat($('#rn-days').value);
+  const expiry_days=$('#rn-days').value===''?0:parseFloat($('#rn-days').value)||0;
+  const expiry_hours=$('#rn-hours')&&$('#rn-hours').value!==''?parseFloat($('#rn-hours').value)||0:0;
   const password=$('#rn-pass').value.trim();
-  const r=await fetch('/api/runners',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,max_bots,expiry_days,password})});
+  const r=await fetch('/api/runners',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,max_bots,expiry_days,expiry_hours,password})});
   if(!r.ok){toast('Error');return}
   const d=await r.json();
   const box=$('#rn-result');box.style.display='block';
