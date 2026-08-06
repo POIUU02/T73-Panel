@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-VROOM Panel v5.8 - Quota Enforced + Secure Custom Telegram Bot Runner
-- Full original panel (inbounds, sub, page, dashboard, WS)
+VROOM Panel v5.9 - Low-Latency WS + Charts Dashboard + Secure Bot Runner
+- Optimized VLESS+WS (Early Data, multi-fingerprint, xudp) for stable low ping
+- Larger relay buffers + TCP_NODELAY for higher browsing speed
+- Dashboard: circular gauges, hourly traffic chart, DL/UL pie
 - Secure bot-runner (admin login required)
 - Permanent bots restore after restart
-- Telegram management for custom bots
 """
 import asyncio, json, os, hashlib, secrets, time, re, base64, subprocess, signal, sys, shutil
 from datetime import datetime, timedelta
@@ -452,7 +453,7 @@ async def lifespan(app: FastAPI):
         timeout=httpx.Timeout(180.0, connect=30.0),
         follow_redirects=True
     )
-    logger.info(f"🚀 VROOM v5.8 :{CONFIG['port']}")
+    logger.info(f"🚀 VROOM v5.9.1 :{CONFIG['port']}")
     await install_telegram_deps()
     asyncio.create_task(restore_permanent_bots())
     asyncio.create_task(keep_alive())
@@ -560,10 +561,44 @@ async def require_auth(request: Request):
 def get_domain():
     return (os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("RAILWAY_PUBLIC_DOMAIN") or "localhost").replace("https://", "").replace("http://", "").rstrip("/")
 
-def generate_vless_link(uuid, remark="VROOM", address=None):
+def generate_vless_link(
+    uuid,
+    remark="VROOM",
+    address=None,
+    fingerprint="chrome",
+    path_extra="",
+    ed=2560,
+    alpn="h2,http/1.1",
+    extra_params=None,
+):
+    """Advanced VLESS+WS for low latency / high speed on Iranian ISPs.
+
+    - Early Data (ed) shrinks first RTT
+    - Multi fingerprint / ALPN for operator variance
+    - packetEncoding=xudp for better UDP (DNS etc.)
+    - optional extra query params (fragment-friendly clients)
+    """
     domain = CUSTOM_DOMAIN if CUSTOM_DOMAIN else get_domain()
     addr = address if address else domain
-    params = {"encryption": "none", "security": "tls", "type": "ws", "host": domain, "path": f"/ws/{uuid}", "sni": domain, "fp": "chrome", "alpn": "http/1.1"}
+    base_path = f"/ws/{uuid}"
+    if path_extra:
+        base_path = f"/ws/{uuid}{path_extra}"
+    # ed=2560 is the common sweet-spot; some clients work better with 2048
+    path = f"{base_path}?ed={int(ed)}"
+    params = {
+        "encryption": "none",
+        "security": "tls",
+        "type": "ws",
+        "host": domain,
+        "path": path,
+        "sni": domain,
+        "fp": fingerprint,
+        "alpn": alpn,
+        "allowInsecure": "0",
+        "packetEncoding": "xudp",
+    }
+    if extra_params:
+        params.update(extra_params)
     query = "&".join(f"{k}={quote(str(v), safe='')}" for k, v in params.items())
     return f"vless://{uuid}@{addr}:443?{query}#{quote(remark)}"
 
@@ -642,11 +677,43 @@ def fmt_bytes(b):
     return f"{b/1024:.0f} KB"
 
 async def build_sub_content(uid, link):
+    """Advanced multi-variant sub: fps × ed × clean-IP for stable low ping on all ISPs.
+
+    Order: best-effort primary first, then alternates so auto-select clients pick a fast one.
+    """
     async with CUSTOM_ADDRESSES_LOCK:
         addresses = list(CUSTOM_ADDRESSES)
-    lines = [generate_vless_link(uid, remark=f"VROOM-{link['label']}")]
-    for i, addr in enumerate(addresses):
-        lines.append(generate_vless_link(uid, remark=f"VROOM-{link['label']}-{i+1}", address=addr))
+    label = link["label"]
+    lines = []
+
+    # --- Tier 1: primary low-latency presets (domain) ---
+    # chrome+ed2560+h2 is the default sweet spot on most fixed-line ISPs
+    presets = [
+        ("chrome", 2560, "h2,http/1.1", f"VROOM-{label}"),
+        ("safari", 2560, "h2,http/1.1", f"VROOM-{label}-saf"),
+        ("chrome", 2048, "http/1.1", f"VROOM-{label}-ed2k"),
+        ("firefox", 2560, "h2,http/1.1", f"VROOM-{label}-ff"),
+        ("randomized", 2560, "h2,http/1.1", f"VROOM-{label}-rnd"),
+        ("ios", 2048, "h2,http/1.1", f"VROOM-{label}-ios"),
+        ("edge", 2560, "h2,http/1.1", f"VROOM-{label}-edge"),
+    ]
+    for fp, ed, alpn, tag in presets:
+        lines.append(generate_vless_link(uid, remark=tag, fingerprint=fp, ed=ed, alpn=alpn))
+
+    # --- Tier 2: clean IP variants (often much lower ping on mobile / filtered DNS) ---
+    mobile_fps = ["chrome", "safari", "randomized", "ios"]
+    for i, addr in enumerate(addresses[:8]):
+        fp = mobile_fps[i % len(mobile_fps)]
+        ed = 2560 if i % 2 == 0 else 2048
+        lines.append(generate_vless_link(
+            uid,
+            remark=f"VROOM-{label}-IP{i+1}-{fp[:3]}",
+            address=addr,
+            fingerprint=fp,
+            ed=ed,
+            alpn="h2,http/1.1",
+        ))
+
     return "\n".join(lines)
 
 # ===================== TELEGRAM =====================
@@ -1118,7 +1185,7 @@ async def start_telegram_bot():
 # ===================== CORE API =====================
 @app.get("/")
 async def root():
-    return {"service": "VROOM", "version": "5.8", "domain": get_domain()}
+    return {"service": "VROOM", "version": "5.9.1", "domain": get_domain()}
 
 @app.get("/health")
 async def health():
@@ -1652,6 +1719,126 @@ async def delete_runner(rid: str, _=Depends(require_auth)):
     save_bots_data(data)
     return {"ok": True}
 
+# ===================== XRAY CLIENT JSON (optimized) =====================
+def build_xray_client_config(uid: str, link: dict, address: str = None, fingerprint: str = "chrome") -> dict:
+    """Optimized Xray-core client JSON for VLESS+WS+TLS (matches this panel's /ws tunnel).
+
+    Tuned for low latency + high throughput on constrained/filtered networks:
+    - dns: DoH + IPv4 preference
+    - sockopt: tcpNoDelay, mark, tproxy-ready fields
+    - mux disabled by default (often raises ping on mobile)
+    - routing: private/CN direct, rest via proxy
+    """
+    domain = CUSTOM_DOMAIN if CUSTOM_DOMAIN else get_domain()
+    addr = address or domain
+    path = f"/ws/{uid}?ed=2560"
+    remark = f"VROOM-{link.get('label', uid)}"
+    return {
+        "remarks": remark,
+        "log": {"loglevel": "warning"},
+        "dns": {
+            "queryStrategy": "UseIPv4",
+            "servers": [
+                "https://1.1.1.1/dns-query",
+                "https://8.8.8.8/dns-query",
+                "localhost",
+            ],
+        },
+        "inbounds": [
+            {
+                "tag": "socks-in",
+                "port": 10808,
+                "listen": "127.0.0.1",
+                "protocol": "socks",
+                "settings": {"udp": True, "auth": "noauth"},
+                "sniffing": {
+                    "enabled": True,
+                    "destOverride": ["http", "tls", "quic"],
+                    "routeOnly": False,
+                },
+            },
+            {
+                "tag": "http-in",
+                "port": 10809,
+                "listen": "127.0.0.1",
+                "protocol": "http",
+                "settings": {},
+            },
+        ],
+        "outbounds": [
+            {
+                "tag": "proxy",
+                "protocol": "vless",
+                "settings": {
+                    "vnext": [
+                        {
+                            "address": addr,
+                            "port": 443,
+                            "users": [
+                                {
+                                    "id": uid,
+                                    "encryption": "none",
+                                    "level": 0,
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "streamSettings": {
+                    "network": "ws",
+                    "security": "tls",
+                    "tlsSettings": {
+                        "serverName": domain,
+                        "allowInsecure": False,
+                        "fingerprint": fingerprint,
+                        "alpn": ["h2", "http/1.1"],
+                    },
+                    "wsSettings": {
+                        "path": path,
+                        "host": domain,
+                        "headers": {"Host": domain},
+                    },
+                    "sockopt": {
+                        "tcpNoDelay": True,
+                        "tcpKeepAliveInterval": 30,
+                        "tcpKeepAliveIdle": 60,
+                        "domainStrategy": "UseIPv4",
+                    },
+                },
+                "mux": {"enabled": False, "concurrency": 8},
+            },
+            {"tag": "direct", "protocol": "freedom", "settings": {"domainStrategy": "UseIPv4"}},
+            {"tag": "block", "protocol": "blackhole", "settings": {}},
+        ],
+        "routing": {
+            "domainStrategy": "IPIfNonMatch",
+            "rules": [
+                {"type": "field", "outboundTag": "direct", "ip": ["geoip:private"]},
+                {"type": "field", "outboundTag": "block", "domain": ["geosite:category-ads-all"]},
+                {"type": "field", "outboundTag": "proxy", "network": "tcp,udp"},
+            ],
+        },
+    }
+
+
+def build_xray_client_variants(uid: str, link: dict, addresses: list = None) -> list:
+    """Multiple optimized client profiles (different fp / clean IP) for url-test."""
+    domain = CUSTOM_DOMAIN if CUSTOM_DOMAIN else get_domain()
+    addrs = list(addresses) if addresses is not None else list(CUSTOM_ADDRESSES)
+    variants = []
+    fps = ["chrome", "safari", "firefox", "randomized"]
+    for fp in fps:
+        cfg = build_xray_client_config(uid, link, address=domain, fingerprint=fp)
+        cfg["remarks"] = f"VROOM-{link.get('label', uid)}-{fp[:3]}"
+        variants.append(cfg)
+    for i, addr in enumerate(addrs[:6]):
+        fp = fps[i % len(fps)]
+        cfg = build_xray_client_config(uid, link, address=addr, fingerprint=fp)
+        cfg["remarks"] = f"VROOM-{link.get('label', uid)}-IP{i+1}-{fp[:3]}"
+        variants.append(cfg)
+    return variants
+
+
 # ===================== SUB =====================
 @app.get("/sub/{uid}")
 async def subscription_raw(uid: str, request: Request):
@@ -1665,7 +1852,8 @@ async def subscription_raw(uid: str, request: Request):
         raise HTTPException(403, "Expired")
     if is_quota_exceeded(link):
         raise HTTPException(403, "Quota exceeded")
-    content = await build_sub_content(uid, link)
+
+    fmt = (request.query_params.get("format") or request.query_params.get("type") or "").lower()
     used, total, expire_ts = link["used_bytes"], (link["limit_bytes"] if link["limit_bytes"] > 0 else 0), 0
     if link.get("expiry"):
         try:
@@ -1680,6 +1868,19 @@ async def subscription_raw(uid: str, request: Request):
         "Subscription-Userinfo": f"upload=0; download={used}; total={total}; expire={expire_ts}",
         "Cache-Control": "no-cache",
     }
+
+    # Optimized Xray-core client JSON (single best or multi-variant list)
+    if fmt in ("xray", "json", "xray-json"):
+        async with CUSTOM_ADDRESSES_LOCK:
+            addrs = list(CUSTOM_ADDRESSES)
+        if request.query_params.get("multi") in ("1", "true", "yes"):
+            variants = build_xray_client_variants(uid, link, addresses=addrs)
+            body = json.dumps(variants, ensure_ascii=False, indent=2)
+        else:
+            body = json.dumps(build_xray_client_config(uid, link), ensure_ascii=False, indent=2)
+        return Response(content=body, media_type="application/json; charset=utf-8", headers=headers)
+
+    content = await build_sub_content(uid, link)
     raw = content + "\n"
     if request.query_params.get("b64") in ("1", "true", "yes"):
         return Response(content=_b64.b64encode(raw.encode()).decode(), media_type="text/plain; charset=utf-8", headers=headers)
@@ -2116,8 +2317,9 @@ if(!r.ok)throw new Error('رمز اشتباه است');location.href='/dashboard
 DASHBOARD_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl" data-theme="light"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>VROOM Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@500;600;700;800&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
-:root{--bg:#eef2ff;--card:#fff;--text:#0f172a;--muted:#64748b;--blue:#3b82f6;--indigo:#6366f1;--green:#10b981;--red:#f43f5e;--r:16px;--shadow:0 4px 16px rgba(0,0,0,.05)}
+:root{--bg:#eef2ff;--card:#fff;--text:#0f172a;--muted:#64748b;--blue:#3b82f6;--indigo:#6366f1;--green:#10b981;--red:#f43f5e;--pink:#ec4899;--amber:#f59e0b;--r:16px;--shadow:0 4px 16px rgba(0,0,0,.05)}
 [data-theme=dark]{--bg:#0b0f1a;--card:#111827;--text:#f1f5f9;--muted:#94a3b8;--shadow:0 4px 16px rgba(0,0,0,.3)}
 *{margin:0;padding:0;box-sizing:border-box}body{font-family:Vazirmatn,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;direction:rtl}
 .side{width:190px;background:var(--card);position:fixed;right:0;top:0;bottom:0;padding:12px 8px;display:flex;flex-direction:column;z-index:40;box-shadow:var(--shadow)}
@@ -2141,7 +2343,21 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 .lang{display:inline-flex;border-radius:10px;overflow:hidden;font-size:10px;font-weight:700;margin-bottom:8px;background:rgba(148,163,184,.08)}
 .lang button{border:none;padding:4px 9px;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;font-weight:700}.lang button.on{background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff}
 .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-@media(max-width:768px){.side{transform:translateX(100%)}.side.open{transform:translateX(0)}.main{margin-right:0;padding-top:52px}.stats{grid-template-columns:1fr 1fr}.mob{display:flex}}
+.gauges{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.gauge-card{background:var(--card);border-radius:var(--r);padding:14px;box-shadow:var(--shadow);text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px}
+.gauge-wrap{position:relative;width:90px;height:90px}
+.gauge-wrap canvas{width:90px!important;height:90px!important}
+.gauge-val{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;font-family:Inter}
+.gauge-label{font-size:11px;color:var(--muted);font-weight:600}
+.charts-row{display:grid;grid-template-columns:1.4fr 1fr;gap:10px;margin-bottom:12px}
+.chart-box{background:var(--card);border-radius:var(--r);padding:14px;box-shadow:var(--shadow);min-height:220px}
+.chart-box h3{font-size:12px;color:var(--blue);margin-bottom:10px}
+.chart-box canvas{max-height:180px}
+.info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.info-item{background:var(--card);border-radius:12px;padding:12px;box-shadow:var(--shadow)}
+.info-item .il{font-size:10px;color:var(--muted);margin-bottom:4px}
+.info-item .iv{font-size:13px;font-weight:800}
+@media(max-width:768px){.side{transform:translateX(100%)}.side.open{transform:translateX(0)}.main{margin-right:0;padding-top:52px}.stats,.gauges,.info-grid{grid-template-columns:1fr 1fr}.charts-row{grid-template-columns:1fr}.mob{display:flex}}
 </style></head><body>
 <div class="mob"><span style="font-weight:900;background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:Inter">VROOM</span>
 <button class="btn bo" onclick="document.querySelector('.side').classList.toggle('open')">☰</button></div>
@@ -2162,23 +2378,35 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 <main class="main">
 <div class="topbar"><div class="pt">داشبورد</div><button class="btn bo" id="themeBtn" onclick="togTheme()" style="padding:5px 9px;font-size:13px">☀️</button></div>
 <section class="page on" id="p-dash">
-<div class="stats">
-<div class="st"><div class="l" data-f="اتصال" data-e="Conn">اتصال</div><div class="v" id="s-cn">0</div></div>
-<div class="st"><div class="l" data-f="دانلود" data-e="DL">دانلود</div><div class="v" id="s-dl" style="font-size:13px">0</div></div>
-<div class="st"><div class="l" data-f="آپلود" data-e="UL">آپلود</div><div class="v" id="s-ul" style="font-size:13px">0</div></div>
-<div class="st"><div class="l" data-f="کل" data-e="Total">کل</div><div class="v" id="s-tr" style="font-size:13px">0</div></div>
+<div class="gauges">
+  <div class="gauge-card"><div class="gauge-wrap"><canvas id="gCpu"></canvas><div class="gauge-val" id="gvCpu">0%</div></div><div class="gauge-label">CPU</div></div>
+  <div class="gauge-card"><div class="gauge-wrap"><canvas id="gRam"></canvas><div class="gauge-val" id="gvRam">0%</div></div><div class="gauge-label">RAM</div></div>
+  <div class="gauge-card"><div class="gauge-wrap"><canvas id="gDisk"></canvas><div class="gauge-val" id="gvDisk">0%</div></div><div class="gauge-label">DISK</div></div>
+  <div class="gauge-card"><div class="gauge-wrap"><canvas id="gConn"></canvas><div class="gauge-val" id="gvConn">0</div></div><div class="gauge-label" data-f="اتصالات" data-e="Connections">اتصالات</div></div>
 </div>
 <div class="stats">
+<div class="st"><div class="l" data-f="دانلود" data-e="DL">دانلود</div><div class="v" id="s-dl" style="font-size:13px">0</div></div>
+<div class="st"><div class="l" data-f="آپلود" data-e="UL">آپلود</div><div class="v" id="s-ul" style="font-size:13px">0</div></div>
+<div class="st"><div class="l" data-f="کل ترافیک" data-e="Total">کل ترافیک</div><div class="v" id="s-tr" style="font-size:13px">0</div></div>
 <div class="st"><div class="l" data-f="لینک‌ها" data-e="Links">لینک‌ها</div><div class="v" id="s-lk">0</div></div>
-<div class="st"><div class="l" data-f="آپتایم" data-e="Uptime">آپتایم</div><div class="v" id="s-up" style="font-size:12px">--</div></div>
-<div class="st"><div class="l">CPU</div><div class="v" id="s-cpu">--</div></div>
-<div class="st"><div class="l">RAM</div><div class="v" id="s-ram">--</div></div>
+</div>
+<div class="info-grid">
+  <div class="info-item"><div class="il" data-f="آپتایم" data-e="Uptime">آپتایم</div><div class="iv" id="s-up">--</div></div>
+  <div class="info-item"><div class="il" data-f="ربات‌های فعال" data-e="Running bots">ربات‌های فعال</div><div class="iv" id="s-bots">0</div></div>
+  <div class="info-item"><div class="il" data-f="دامنه" data-e="Domain">دامنه</div><div class="iv" id="s-dom" style="font-size:11px;word-break:break-all">--</div></div>
+  <div class="info-item"><div class="il" data-f="درخواست‌ها" data-e="Requests">درخواست‌ها</div><div class="iv" id="s-req">0</div></div>
+  <div class="info-item"><div class="il" data-f="خطاها" data-e="Errors">خطاها</div><div class="iv" id="s-err">0</div></div>
+  <div class="info-item"><div class="il">Telegram</div><div class="iv" id="s-tg">--</div></div>
+</div>
+<div class="charts-row">
+  <div class="chart-box"><h3 data-f="📈 ترافیک ساعتی" data-e="📈 Hourly traffic">📈 ترافیک ساعتی</h3><canvas id="chartHourly"></canvas></div>
+  <div class="chart-box"><h3 data-f="📊 دانلود / آپلود" data-e="📊 DL / UL">📊 دانلود / آپلود</h3><canvas id="chartPie"></canvas></div>
 </div>
 <div class="card"><h3 data-f="⚡ ساخت سریع" data-e="⚡ Quick">⚡ ساخت سریع</h3>
 <div style="display:flex;gap:6px;flex-wrap:wrap">
 <button class="btn bg" onclick="qc(1)">+1GB</button><button class="btn bg" onclick="qc(5)">+5GB</button>
 <button class="btn bg" onclick="qc(10)">+10GB</button><button class="btn bg" onclick="qc(50)">+50GB</button>
-<button class="btn bo" onclick="resetAll()" data-f="ریست" data-e="Reset">ریست</button>
+<button class="btn bo" onclick="resetAll()" data-f="ریست مصرف" data-e="Reset usage">ریست مصرف</button>
 </div></div>
 </section>
 <section class="page" id="p-links">
@@ -2194,7 +2422,8 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 </section>
 <section class="page" id="p-addr">
 <div class="pt" data-f="آی‌پی تمیز" data-e="Clean IP">آی‌پی تمیز</div>
-<div class="card"><div class="grid2"><input id="new-addr" placeholder="IP / Domain"><button class="btn bg" onclick="addAddr()" data-f="افزودن" data-e="Add">افزودن</button></div><div id="alist" style="margin-top:8px"></div></div>
+<div class="card"><p style="font-size:11px;color:var(--muted);margin-bottom:8px">آی‌پی‌های تمیز برای پینگ پایین‌تر روی همه اپراتورها — در ساب به صورت خودکار اضافه می‌شوند</p>
+<div class="grid2"><input id="new-addr" placeholder="IP / Domain"><button class="btn bg" onclick="addAddr()" data-f="افزودن" data-e="Add">افزودن</button></div><div id="alist" style="margin-top:8px"></div></div>
 </section>
 <section class="page" id="p-tg">
 <div class="pt" data-f="ربات تلگرام" data-e="Telegram">ربات تلگرام</div>
@@ -2245,17 +2474,55 @@ table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:right;pad
 <div class="toast" id="toast"></div>
 <script>
 const $=s=>document.querySelector(s);let LANG=localStorage.getItem('vroom_dl')||'fa';
+let chartHourly=null, chartPie=null;
+const gaugeCharts={};
 function setL(l){LANG=l;localStorage.setItem('vroom_dl',l);document.documentElement.lang=l;document.documentElement.dir=l==='fa'?'rtl':'ltr';$('#lFa').classList.toggle('on',l==='fa');$('#lEn').classList.toggle('on',l==='en');document.querySelectorAll('[data-f]').forEach(el=>{el.textContent=l==='fa'?el.dataset.f:el.dataset.e})}
-function togTheme(){const n=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);localStorage.setItem('vt',n);document.getElementById('themeBtn').textContent=n==='light'?'☀️':'🌙'}
+function togTheme(){const n=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);localStorage.setItem('vt',n);document.getElementById('themeBtn').textContent=n==='light'?'☀️':'🌙';updateChartColors()}
 document.querySelectorAll('.ni[data-p]').forEach(el=>el.onclick=()=>go(el.dataset.p));
 function go(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));document.getElementById('p-'+id)?.classList.add('on');
 document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('on',n.dataset.p===id));document.querySelector('.side')?.classList.remove('open');
 if(id==='links')loadL();if(id==='conn')loadC();if(id==='addr')loadA();if(id==='tg')loadTg();if(id==='domain')loadDom();if(id==='bots')loadBots()}
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000)}
+function chartColors(){const dark=document.documentElement.getAttribute('data-theme')==='dark';return{grid:dark?'rgba(255,255,255,.08)':'rgba(0,0,0,.06)',text:dark?'#94a3b8':'#64748b'}}
+function makeGauge(id,val,max,color){
+  const ctx=document.getElementById(id);
+  if(!ctx)return;
+  const pct=Math.min(100,Math.max(0,max? (val/max)*100 : val));
+  if(gaugeCharts[id]){gaugeCharts[id].data.datasets[0].data=[pct,100-pct];gaugeCharts[id].update('none');return}
+  gaugeCharts[id]=new Chart(ctx,{type:'doughnut',data:{datasets:[{data:[pct,100-pct],backgroundColor:[color,'rgba(148,163,184,.15)'],borderWidth:0,cutout:'78%'}]},options:{responsive:false,plugins:{legend:{display:false},tooltip:{enabled:false}},animation:{duration:400}}});
+}
+function ensureCharts(){
+  if(!chartHourly){
+    chartHourly=new Chart(document.getElementById('chartHourly'),{type:'line',data:{labels:[],datasets:[{label:'Traffic',data:[],borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,.15)',fill:true,tension:.35,pointRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:chartColors().text,maxTicksLimit:8},grid:{color:chartColors().grid}},y:{ticks:{color:chartColors().text},grid:{color:chartColors().grid}}}}});
+  }
+  if(!chartPie){
+    chartPie=new Chart(document.getElementById('chartPie'),{type:'doughnut',data:{labels:['Download','Upload'],datasets:[{data:[1,1],backgroundColor:['#3b82f6','#ec4899'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:chartColors().text,boxWidth:12}}}}});
+  }
+}
+function updateChartColors(){
+  const c=chartColors();
+  if(chartHourly){chartHourly.options.scales.x.ticks.color=c.text;chartHourly.options.scales.y.ticks.color=c.text;chartHourly.options.scales.x.grid.color=c.grid;chartHourly.options.scales.y.grid.color=c.grid;chartHourly.update('none')}
+  if(chartPie){chartPie.options.plugins.legend.labels.color=c.text;chartPie.update('none')}
+}
 async function loadS(){try{const r=await fetch('/stats');if(!r.ok)return;const d=await r.json();
-$('#s-cn').textContent=d.active_connections;$('#s-dl').textContent=d.download_fmt||'0';$('#s-ul').textContent=d.upload_fmt||'0';
+$('#s-dl').textContent=d.download_fmt||'0';$('#s-ul').textContent=d.upload_fmt||'0';
 $('#s-tr').textContent=d.total_fmt||'0';$('#s-lk').textContent=d.links_count;$('#s-up').textContent=d.uptime;
-$('#s-cpu').textContent=(d.cpu_percent||0).toFixed(0)+'%';$('#s-ram').textContent=(d.memory_percent||0).toFixed(0)+'%';window._conns=d.connections_detail||[]}catch(e){}}
+$('#s-bots').textContent=d.running_bots||0;$('#s-dom').textContent=d.domain||'--';
+$('#s-req').textContent=d.total_requests||0;$('#s-err').textContent=d.total_errors||0;
+$('#s-tg').textContent=d.telegram_enabled?'● ON':'● OFF';
+$('#s-tg').style.color=d.telegram_enabled?'var(--green)':'var(--red)';
+window._conns=d.connections_detail||[];
+const cpu=d.cpu_percent||0, ram=d.memory_percent||0, disk=d.disk_percent||0, cn=d.active_connections||0;
+$('#gvCpu').textContent=cpu.toFixed(0)+'%';$('#gvRam').textContent=ram.toFixed(0)+'%';$('#gvDisk').textContent=disk.toFixed(0)+'%';$('#gvConn').textContent=cn;
+makeGauge('gCpu',cpu,100,'#6366f1');makeGauge('gRam',ram,100,'#ec4899');makeGauge('gDisk',disk,100,'#f59e0b');makeGauge('gConn',Math.min(cn,50),50,'#10b981');
+ensureCharts();
+const ht=d.hourly_traffic||{};
+const keys=Object.keys(ht).sort();
+const vals=keys.map(k=>Math.round((ht[k]||0)/1024/1024*100)/100);
+if(chartHourly){chartHourly.data.labels=keys;chartHourly.data.datasets[0].data=vals;chartHourly.update('none')}
+const dl=d.download_bytes||0, ul=d.upload_bytes||0;
+if(chartPie){chartPie.data.datasets[0].data=[dl||1,ul||1];chartPie.update('none')}
+}catch(e){}}
 async function loadL(){const r=await fetch('/api/links');const d=await r.json();const b=$('#lb');
 if(!d.links?.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--muted)">Empty</td></tr>';return}
 b.innerHTML=d.links.map(l=>{const u=(l.used_bytes/1e9).toFixed(2),lim=l.limit_bytes?(l.limit_bytes/1e9).toFixed(1)+'G':'∞';
@@ -2343,7 +2610,12 @@ async def dashboard_page(request: Request):
     return HTMLResponse(DASHBOARD_HTML)
 
 # ===================== WS =====================
-RELAY_BUF = 2 * 1024 * 1024
+# High-throughput relay settings (browsing / video / multi-tab)
+RELAY_BUF = 8 * 1024 * 1024          # 8MB read chunks
+TCP_CONNECT_TIMEOUT = 3.5
+WS_DRAIN_EVERY = 8                   # drain socket every N writes (lower syscall overhead)
+_OUTBOUND_DNS_CACHE = {}             # host -> (ip, expire_ts)
+_OUTBOUND_DNS_TTL = 300
 
 async def parse_vless_header(first_chunk: bytes):
     if len(first_chunk) < 24:
@@ -2384,6 +2656,8 @@ async def add_usage(uid, n, direction="total"):
         stats["download_bytes"] += n
 
 async def ws_to_tcp(ws, writer, conn_id, uid):
+    """Upload path: coalesce drains to cut syscall / latency under load."""
+    pending = 0
     try:
         while True:
             msg = await ws.receive()
@@ -2398,8 +2672,15 @@ async def ws_to_tcp(ws, writer, conn_id, uid):
             hourly_traffic[datetime.now().strftime("%H:00")] += size
             await add_usage(uid, size, "up")
             writer.write(data)
+            pending += 1
+            if pending >= WS_DRAIN_EVERY or size > 65536:
+                await writer.drain()
+                pending = 0
+        if pending:
             await writer.drain()
     except WebSocketDisconnect:
+        pass
+    except Exception:
         pass
     finally:
         try:
@@ -2408,6 +2689,7 @@ async def ws_to_tcp(ws, writer, conn_id, uid):
             pass
 
 async def tcp_to_ws(ws, reader, conn_id, uid):
+    """Download path: large reads, minimal framing overhead after first packet."""
     first = True
     try:
         while True:
@@ -2418,10 +2700,72 @@ async def tcp_to_ws(ws, reader, conn_id, uid):
             connections[conn_id]["bytes"] += size
             hourly_traffic[datetime.now().strftime("%H:00")] += size
             await add_usage(uid, size, "down")
-            await ws.send_bytes((b"\x00\x00" + data) if first else data)
-            first = False
+            if first:
+                await ws.send_bytes(b"\x00\x00" + data)
+                first = False
+            else:
+                await ws.send_bytes(data)
     except Exception:
         pass
+
+
+async def _resolve_host_cached(host: str) -> str:
+    """Short DNS cache for outbound connects — avoids repeated lookups under load."""
+    import socket as _socket
+    now = time.time()
+    cached = _OUTBOUND_DNS_CACHE.get(host)
+    if cached and cached[1] > now:
+        return cached[0]
+    try:
+        loop = asyncio.get_event_loop()
+        infos = await loop.getaddrinfo(host, None, family=_socket.AF_UNSPEC, type=_socket.SOCK_STREAM)
+        if not infos:
+            return host
+        ip = infos[0][4][0]
+        _OUTBOUND_DNS_CACHE[host] = (ip, now + _OUTBOUND_DNS_TTL)
+        return ip
+    except Exception:
+        return host
+
+
+async def _open_optimized_connection(address: str, port: int):
+    """Open TCP with NODELAY + large buffers + optional DNS cache."""
+    connect_host = address
+    # Only cache pure hostnames (skip already-numeric IPs)
+    is_ip = bool(re.match(r"^(\d{1,3}\.){3}\d{1,3}$", address) or ":" in address)
+    if not is_ip:
+        connect_host = await _resolve_host_cached(address)
+
+    reader, writer = await asyncio.wait_for(
+        asyncio.open_connection(connect_host, port),
+        timeout=TCP_CONNECT_TIMEOUT,
+    )
+    try:
+        sock = writer.get_extra_info("socket")
+        if sock is not None:
+            import socket as _socket
+            sock.setsockopt(_socket.IPPROTO_TCP, _socket.TCP_NODELAY, 1)
+            try:
+                sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_KEEPALIVE, 1)
+            except Exception:
+                pass
+            for opt, val in (
+                (_socket.SO_RCVBUF, 8 * 1024 * 1024),
+                (_socket.SO_SNDBUF, 8 * 1024 * 1024),
+            ):
+                try:
+                    sock.setsockopt(_socket.SOL_SOCKET, opt, val)
+                except Exception:
+                    pass
+            # Linux TCP_QUICKACK — lower delayed-ACK latency when available
+            try:
+                if hasattr(_socket, "TCP_QUICKACK"):
+                    sock.setsockopt(_socket.IPPROTO_TCP, _socket.TCP_QUICKACK, 1)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return reader, writer
 
 @app.websocket("/ws/{uuid}")
 async def websocket_tunnel(websocket: WebSocket, uuid: str):
@@ -2452,7 +2796,7 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
         link_ip_map[uuid].add(client_ip)
         await add_usage(uuid, len(first_chunk), "up")
         connections[conn_id]["bytes"] += len(first_chunk)
-        reader, writer = await asyncio.wait_for(asyncio.open_connection(address, port), timeout=5)
+        reader, writer = await _open_optimized_connection(address, port)
         if payload:
             await add_usage(uuid, len(payload), "up")
             writer.write(payload)
