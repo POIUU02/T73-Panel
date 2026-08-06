@@ -561,30 +561,41 @@ async def require_auth(request: Request):
 def get_domain():
     return (os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("RAILWAY_PUBLIC_DOMAIN") or "localhost").replace("https://", "").replace("http://", "").rstrip("/")
 
+def to_vless_uuid(key: str) -> str:
+    """VLESS user id MUST be a valid UUID — many clients reject bare labels like 'user1'."""
+    import uuid as _uuid
+    try:
+        return str(_uuid.UUID(str(key)))
+    except Exception:
+        return str(_uuid.uuid5(_uuid.NAMESPACE_URL, f"vroom:{key}"))
+
+
 def generate_vless_link(
-    uuid,
+    uid,
     remark="VROOM",
     address=None,
     fingerprint="chrome",
-    path_extra="",
-    ed=2560,
-    alpn="h2,http/1.1",
+    ed=None,
+    alpn="http/1.1",
     extra_params=None,
 ):
-    """Advanced VLESS+WS for low latency / high speed on Iranian ISPs.
+    """Compatible VLESS+WS+TLS link for this panel's /ws/{uid} tunnel.
 
-    - Early Data (ed) shrinks first RTT
-    - Multi fingerprint / ALPN for operator variance
-    - packetEncoding=xudp for better UDP (DNS etc.)
-    - optional extra query params (fragment-friendly clients)
+    Compatibility-first defaults (what actually connects on most clients):
+    - valid UUID in vless:// id (derived from uid if needed)
+    - path = /ws/{uid}  (server routes on this; NOT the UUID)
+    - alpn = http/1.1 only (h2 often breaks pure WS)
+    - no packetEncoding (breaks older v2rayNG / some apps)
+    - optional Early Data via ed= in path query
     """
     domain = CUSTOM_DOMAIN if CUSTOM_DOMAIN else get_domain()
-    addr = address if address else domain
-    base_path = f"/ws/{uuid}"
-    if path_extra:
-        base_path = f"/ws/{uuid}{path_extra}"
-    # ed=2560 is the common sweet-spot; some clients work better with 2048
-    path = f"{base_path}?ed={int(ed)}"
+    addr = (address or domain).strip()
+    # Path must match FastAPI route /ws/{uuid} — use the LINKS key (uid), not the derived UUID
+    if ed and int(ed) > 0:
+        path = f"/ws/{uid}?ed={int(ed)}"
+    else:
+        path = f"/ws/{uid}"
+    vless_id = to_vless_uuid(uid)
     params = {
         "encryption": "none",
         "security": "tls",
@@ -592,15 +603,15 @@ def generate_vless_link(
         "host": domain,
         "path": path,
         "sni": domain,
-        "fp": fingerprint,
-        "alpn": alpn,
-        "allowInsecure": "0",
-        "packetEncoding": "xudp",
+        "fp": fingerprint or "chrome",
+        "alpn": alpn or "http/1.1",
     }
     if extra_params:
-        params.update(extra_params)
+        for k, v in extra_params.items():
+            if v is not None and v != "":
+                params[k] = v
     query = "&".join(f"{k}={quote(str(v), safe='')}" for k, v in params.items())
-    return f"vless://{uuid}@{addr}:443?{query}#{quote(remark)}"
+    return f"vless://{vless_id}@{addr}:443?{query}#{quote(remark)}"
 
 def uptime():
     secs = int(time.time() - stats["start_time"])
@@ -677,41 +688,47 @@ def fmt_bytes(b):
     return f"{b/1024:.0f} KB"
 
 async def build_sub_content(uid, link):
-    """Advanced multi-variant sub: fps × ed × clean-IP for stable low ping on all ISPs.
+    """Subscription lines: reliable primary first, then low-ping alternates.
 
-    Order: best-effort primary first, then alternates so auto-select clients pick a fast one.
+    Tier 0 = maximum compatibility (must connect everywhere).
+    Tier 1 = Early Data + alt fingerprints (better ping when client supports it).
+    Tier 2 = clean IPs (often best on mobile).
     """
     async with CUSTOM_ADDRESSES_LOCK:
         addresses = list(CUSTOM_ADDRESSES)
-    label = link["label"]
+    label = link.get("label") or uid
     lines = []
 
-    # --- Tier 1: primary low-latency presets (domain) ---
-    # chrome+ed2560+h2 is the default sweet spot on most fixed-line ISPs
-    presets = [
-        ("chrome", 2560, "h2,http/1.1", f"VROOM-{label}"),
-        ("safari", 2560, "h2,http/1.1", f"VROOM-{label}-saf"),
-        ("chrome", 2048, "http/1.1", f"VROOM-{label}-ed2k"),
-        ("firefox", 2560, "h2,http/1.1", f"VROOM-{label}-ff"),
-        ("randomized", 2560, "h2,http/1.1", f"VROOM-{label}-rnd"),
-        ("ios", 2048, "h2,http/1.1", f"VROOM-{label}-ios"),
-        ("edge", 2560, "h2,http/1.1", f"VROOM-{label}-edge"),
-    ]
-    for fp, ed, alpn, tag in presets:
-        lines.append(generate_vless_link(uid, remark=tag, fingerprint=fp, ed=ed, alpn=alpn))
+    # --- Tier 0: rock-solid (no ed, http/1.1 only, chrome) ---
+    lines.append(generate_vless_link(
+        uid, remark=f"VROOM-{label}", fingerprint="chrome", ed=None, alpn="http/1.1",
+    ))
 
-    # --- Tier 2: clean IP variants (often much lower ping on mobile / filtered DNS) ---
-    mobile_fps = ["chrome", "safari", "randomized", "ios"]
+    # --- Tier 1: same host, alt fp / optional ed (still WS-safe alpn) ---
+    for fp, ed, tag in (
+        ("chrome", 2048, f"VROOM-{label}-ed"),
+        ("safari", None, f"VROOM-{label}-saf"),
+        ("firefox", None, f"VROOM-{label}-ff"),
+        ("randomized", 2048, f"VROOM-{label}-rnd"),
+        ("ios", None, f"VROOM-{label}-ios"),
+    ):
+        lines.append(generate_vless_link(
+            uid, remark=tag, fingerprint=fp, ed=ed, alpn="http/1.1",
+        ))
+
+    # --- Tier 2: clean IP addresses (best ping when domain is slow) ---
+    fps = ("chrome", "safari", "randomized", "ios")
     for i, addr in enumerate(addresses[:8]):
-        fp = mobile_fps[i % len(mobile_fps)]
-        ed = 2560 if i % 2 == 0 else 2048
+        if not addr or not str(addr).strip():
+            continue
+        fp = fps[i % len(fps)]
         lines.append(generate_vless_link(
             uid,
             remark=f"VROOM-{label}-IP{i+1}-{fp[:3]}",
-            address=addr,
+            address=str(addr).strip(),
             fingerprint=fp,
-            ed=ed,
-            alpn="h2,http/1.1",
+            ed=2048 if i % 2 == 0 else None,
+            alpn="http/1.1",
         ))
 
     return "\n".join(lines)
@@ -1720,19 +1737,13 @@ async def delete_runner(rid: str, _=Depends(require_auth)):
     return {"ok": True}
 
 # ===================== XRAY CLIENT JSON (optimized) =====================
-def build_xray_client_config(uid: str, link: dict, address: str = None, fingerprint: str = "chrome") -> dict:
-    """Optimized Xray-core client JSON for VLESS+WS+TLS (matches this panel's /ws tunnel).
-
-    Tuned for low latency + high throughput on constrained/filtered networks:
-    - dns: DoH + IPv4 preference
-    - sockopt: tcpNoDelay, mark, tproxy-ready fields
-    - mux disabled by default (often raises ping on mobile)
-    - routing: private/CN direct, rest via proxy
-    """
+def build_xray_client_config(uid: str, link: dict, address: str = None, fingerprint: str = "chrome", use_ed: bool = False) -> dict:
+    """Compatible Xray-core client JSON for this panel's /ws/{uid} tunnel."""
     domain = CUSTOM_DOMAIN if CUSTOM_DOMAIN else get_domain()
-    addr = address or domain
-    path = f"/ws/{uid}?ed=2560"
+    addr = (address or domain).strip()
+    path = f"/ws/{uid}?ed=2048" if use_ed else f"/ws/{uid}"
     remark = f"VROOM-{link.get('label', uid)}"
+    vless_id = to_vless_uuid(uid)
     return {
         "remarks": remark,
         "log": {"loglevel": "warning"},
@@ -1753,7 +1764,7 @@ def build_xray_client_config(uid: str, link: dict, address: str = None, fingerpr
                 "settings": {"udp": True, "auth": "noauth"},
                 "sniffing": {
                     "enabled": True,
-                    "destOverride": ["http", "tls", "quic"],
+                    "destOverride": ["http", "tls"],
                     "routeOnly": False,
                 },
             },
@@ -1776,7 +1787,7 @@ def build_xray_client_config(uid: str, link: dict, address: str = None, fingerpr
                             "port": 443,
                             "users": [
                                 {
-                                    "id": uid,
+                                    "id": vless_id,
                                     "encryption": "none",
                                     "level": 0,
                                 }
@@ -1790,18 +1801,16 @@ def build_xray_client_config(uid: str, link: dict, address: str = None, fingerpr
                     "tlsSettings": {
                         "serverName": domain,
                         "allowInsecure": False,
-                        "fingerprint": fingerprint,
-                        "alpn": ["h2", "http/1.1"],
+                        "fingerprint": fingerprint or "chrome",
+                        "alpn": ["http/1.1"],
                     },
                     "wsSettings": {
                         "path": path,
-                        "host": domain,
                         "headers": {"Host": domain},
                     },
                     "sockopt": {
                         "tcpNoDelay": True,
                         "tcpKeepAliveInterval": 30,
-                        "tcpKeepAliveIdle": 60,
                         "domainStrategy": "UseIPv4",
                     },
                 },
@@ -1814,7 +1823,6 @@ def build_xray_client_config(uid: str, link: dict, address: str = None, fingerpr
             "domainStrategy": "IPIfNonMatch",
             "rules": [
                 {"type": "field", "outboundTag": "direct", "ip": ["geoip:private"]},
-                {"type": "field", "outboundTag": "block", "domain": ["geosite:category-ads-all"]},
                 {"type": "field", "outboundTag": "proxy", "network": "tcp,udp"},
             ],
         },
@@ -2769,6 +2777,8 @@ async def _open_optimized_connection(address: str, port: int):
 
 @app.websocket("/ws/{uuid}")
 async def websocket_tunnel(websocket: WebSocket, uuid: str):
+    # Normalize path id (strip accidental query/fragment leftovers)
+    uuid = (uuid or "").split("?")[0].split("#")[0].strip()
     await websocket.accept()
     writer = None
     conn_id = None
@@ -2783,7 +2793,8 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
         if max_conn > 0 and client_ip not in link_ip_map.get(uuid, set()) and count_connections_for_link(uuid) >= max_conn:
             await websocket.close(code=1008, reason="limit")
             return
-        first_msg = await asyncio.wait_for(websocket.receive(), timeout=10)
+        # First VLESS packet (allow slower mobile networks)
+        first_msg = await asyncio.wait_for(websocket.receive(), timeout=20)
         if first_msg["type"] == "websocket.disconnect":
             return
         first_chunk = first_msg.get("bytes") or (first_msg.get("text") or "").encode()
