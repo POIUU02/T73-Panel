@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-VROOM Panel v5.9 - Ultra-Fast + No Limits + Anti-Throttle
+VROOM Panel v6.1 - SNI = Panel Domain
 - Full original panel (inbounds, sub, page, dashboard, WS)
 - Secure bot-runner (admin login required)
 - Permanent bots restore after restart
 - Telegram management for custom bots
-- Optimized for speed & bypass restrictions
+- SNI set to panel domain only
 """
 import asyncio, json, os, hashlib, secrets, time, re, base64, subprocess, signal, sys, shutil
 from datetime import datetime, timedelta
@@ -424,11 +424,11 @@ def get_owner_from_request(request: Request) -> str:
 async def lifespan(app: FastAPI):
     global http_client
     http_client = httpx.AsyncClient(
-        limits=httpx.Limits(max_connections=5000, max_keepalive_connections=1000),
-        timeout=httpx.Timeout(180.0, connect=30.0),
+        limits=httpx.Limits(max_connections=10000, max_keepalive_connections=2000),
+        timeout=httpx.Timeout(300.0, connect=30.0),
         follow_redirects=True
     )
-    logger.info(f"🚀 VROOM v5.9 :{CONFIG['port']}")
+    logger.info(f"🚀 VROOM v6.1 :{CONFIG['port']}")
     await install_telegram_deps()
     asyncio.create_task(restore_permanent_bots())
     asyncio.create_task(keep_alive())
@@ -475,7 +475,7 @@ error_logs = deque(maxlen=50)
 hourly_traffic = defaultdict(int)
 http_client = None
 LINKS, LINKS_LOCK = {}, asyncio.Lock()
-CUSTOM_ADDRESSES, CUSTOM_ADDRESSES_LOCK = ["www.speedtest.net", "www.google.com", "www.cloudflare.com"], asyncio.Lock()
+CUSTOM_ADDRESSES, CUSTOM_ADDRESSES_LOCK = [], asyncio.Lock()
 CUSTOM_DOMAIN, CUSTOM_DOMAIN_LOCK = "", asyncio.Lock()
 TELEGRAM = {"token": os.environ.get("TELEGRAM_BOT_TOKEN", ""), "admin_ids": [], "enabled": False, "offset": 0}
 TELEGRAM_LOCK, TELEGRAM_TASK, TG_STATE = asyncio.Lock(), None, {}
@@ -538,15 +538,14 @@ def get_domain():
 def generate_vless_link(uuid, remark="VROOM", address=None):
     domain = CUSTOM_DOMAIN if CUSTOM_DOMAIN else get_domain()
     addr = address if address else domain
-    # استفاده از SNI اسپیدتست برای عبور از فیلترینگ
-    sni_domain = "www.speedtest.net"
+    # SNI = دامنه خود پنل
     params = {
         "encryption": "none",
         "security": "tls",
         "type": "ws",
         "host": domain,
         "path": f"/ws/{uuid}",
-        "sni": sni_domain,  # مهمترین تغییر برای دور زدن محدودیت
+        "sni": domain,  # SNI برابر دامنه پنل
         "fp": "chrome",
         "alpn": "http/1.1"
     }
@@ -628,12 +627,7 @@ def fmt_bytes(b):
     return f"{b/1024:.0f} KB"
 
 async def build_sub_content(uid, link):
-    async with CUSTOM_ADDRESSES_LOCK:
-        addresses = list(CUSTOM_ADDRESSES)
-    lines = [generate_vless_link(uid, remark=f"VROOM-{link['label']}")]
-    for i, addr in enumerate(addresses):
-        lines.append(generate_vless_link(uid, remark=f"VROOM-{link['label']}-{i+1}", address=addr))
-    return "\n".join(lines)
+    return generate_vless_link(uid, remark=f"VROOM-{link['label']}")
 
 # ===================== TELEGRAM =====================
 def ikb(rows):
@@ -701,7 +695,7 @@ async def handle_callback(cq):
     if data in ("lang_fa", "lang_en"):
         TG_STATE.setdefault(user_id, {})["lang"] = "fa" if data == "lang_fa" else "en"
         lang = tg_lang(user_id)
-        txt = "🚀 <b>VROOM Bot v5.9</b>\nفقط با دکمه‌ها کار کن." if lang == "fa" else "🚀 <b>VROOM Bot v5.9</b>\nButtons only."
+        txt = "🚀 <b>VROOM Bot v6.1</b>\nفقط با دکمه‌ها کار کن." if lang == "fa" else "🚀 <b>VROOM Bot v6.1</b>\nButtons only."
         await tg_edit(chat_id, message_id, txt, reply_markup=main_menu_kb(lang))
         return
 
@@ -709,7 +703,7 @@ async def handle_callback(cq):
         for k in list((TG_STATE.get(user_id) or {}).keys()):
             if k != "lang":
                 TG_STATE.get(user_id, {}).pop(k, None)
-        txt = "🚀 <b>VROOM Bot v5.9</b>\nفقط با دکمه‌ها." if lang == "fa" else "🚀 <b>VROOM Bot v5.9</b>\nButtons only."
+        txt = "🚀 <b>VROOM Bot v6.1</b>\nفقط با دکمه‌ها." if lang == "fa" else "🚀 <b>VROOM Bot v6.1</b>\nButtons only."
         await tg_edit(chat_id, message_id, txt, reply_markup=main_menu_kb(lang))
         return
 
@@ -1048,7 +1042,7 @@ async def handle_tg_message(msg):
     lang = tg_lang(user_id)
     if text in ("/start", "start", "منو", "menu"):
         if is_admin:
-            txt = "🚀 <b>VROOM Bot v5.9</b>\nفقط دکمه — لینک ساب + ربات‌های سفارشی." if lang == "fa" else "🚀 <b>VROOM Bot v5.9</b>\nButtons only — sub + custom bots."
+            txt = "🚀 <b>VROOM Bot v6.1</b>\nفقط دکمه — لینک ساب + ربات‌های سفارشی." if lang == "fa" else "🚀 <b>VROOM Bot v6.1</b>\nButtons only — sub + custom bots."
             await tg_send(chat_id, txt, reply_markup=main_menu_kb(lang))
         else:
             await tg_send(chat_id, "⛔ فقط ادمین" if lang == "fa" else "⛔ Admin only")
@@ -1102,7 +1096,7 @@ async def start_telegram_bot():
 # ===================== CORE API =====================
 @app.get("/")
 async def root():
-    return {"service": "VROOM", "version": "5.9", "domain": get_domain()}
+    return {"service": "VROOM", "version": "6.1", "domain": get_domain()}
 
 @app.get("/health")
 async def health():
@@ -1308,7 +1302,7 @@ async def stop_tg(_=Depends(require_auth)):
         TELEGRAM_TASK.cancel()
     return {"ok": True}
 
-# ===================== SECURE BOT RUNNER API (ADMIN ONLY) =====================
+# ===================== SECURE BOT RUNNER API =====================
 @app.get("/api/user/runner-info")
 async def runner_info(request: Request, _=Depends(require_runner_or_admin)):
     owner_id = get_owner_from_request(request)
@@ -2315,7 +2309,7 @@ async def dashboard_page(request: Request):
     return HTMLResponse(DASHBOARD_HTML)
 
 # ===================== WS =====================
-RELAY_BUF = 4 * 1024 * 1024  # افزایش بافر برای سرعت بیشتر
+RELAY_BUF = 8 * 1024 * 1024  # بافر بزرگتر برای سرعت بیشتر
 
 async def parse_vless_header(first_chunk: bytes):
     if len(first_chunk) < 24:
