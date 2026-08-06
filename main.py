@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-VROOM Panel v5.8 - Quota Enforced + Secure Custom Telegram Bot Runner
+VROOM Panel v5.9 - Ultra-Fast + No Limits + Anti-Throttle
 - Full original panel (inbounds, sub, page, dashboard, WS)
 - Secure bot-runner (admin login required)
 - Permanent bots restore after restart
 - Telegram management for custom bots
+- Optimized for speed & bypass restrictions
 """
 import asyncio, json, os, hashlib, secrets, time, re, base64, subprocess, signal, sys, shutil
 from datetime import datetime, timedelta
@@ -40,7 +41,6 @@ TELEGRAM_DEPS = [
     "pyrogram==2.0.106",
     "telethon==1.36.0",
     "httpx", "aiohttp", "requests",
-    # کتابخانه‌های رایج ربات‌های فارسی / عمومی
     "jdatetime", "persiantools", "pytz", "python-dateutil",
     "Pillow", "qrcode", "openpyxl", "pandas",
     "beautifulsoup4", "lxml", "cryptography",
@@ -49,16 +49,14 @@ TELEGRAM_DEPS = [
     "emoji", "deep-translator", "gTTS",
 ]
 
-RUNNING_BOTS = {}          # bot_id -> info
+RUNNING_BOTS = {}
 BOTS_LOCK = asyncio.Lock()
 DEPS_INSTALLED = False
 DEPS_LOCK = asyncio.Lock()
-# لینک‌های دسترسی موقت / دائمی به صفحه راه‌انداز
-BOT_RUNNER_ACCESS = {}     # access_key -> {"expires": ts|None, "runner_id": str, "password": str, "permanent": bool}
+BOT_RUNNER_ACCESS = {}
 BOT_RUNNER_ACCESS_LOCK = asyncio.Lock()
-BOT_RUNNER_ACCESS_TTL = 60 * 60 * 6  # 6 ساعت برای لینک موقت
+BOT_RUNNER_ACCESS_TTL = 60 * 60 * 6
 
-# حساب‌های راه‌انداز چندکاربره (مثل اینباند)
 RUNNERS_FILE = BOTS_DIR / "runners.json"
 
 def load_bots_data():
@@ -84,7 +82,6 @@ def save_runners(data):
     RUNNERS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 async def pip_install_packages(packages: list) -> bool:
-    """نصب لیست پکیج‌ها با pip"""
     ok = True
     for dep in packages:
         try:
@@ -115,11 +112,9 @@ async def install_telegram_deps():
         return ok
 
 def extract_missing_module(log_text: str) -> str:
-    """از لاگ ModuleNotFoundError نام ماژول را برمی‌دارد"""
     m = re.search(r"No module named ['\"]([^'\"]+)['\"]", log_text or "")
     if m:
         name = m.group(1).split(".")[0]
-        # نگاشت بعضی نام‌های import به نام پکیج pip
         mapping = {
             "PIL": "Pillow",
             "bs4": "beautifulsoup4",
@@ -138,20 +133,16 @@ def extract_missing_module(log_text: str) -> str:
     return ""
 
 async def auto_install_missing_and_retry(bot_id: str, code: str, token: str, permanent: bool, logs: str, owner_id: str = ""):
-    """اگر ماژول کم بود نصب کن و یک‌بار دوباره اجرا کن"""
     mod = extract_missing_module(logs)
     if not mod:
         return False, logs
     logger.info(f"📦 Auto-installing missing module: {mod}")
     await pip_install_packages([mod])
-    # دوباره اجرا (بدون حلقه بی‌نهایت — فقط یک بار از بیرون صدا زده می‌شود)
     ok, msg = await _start_user_bot_once(bot_id, code, token, permanent, owner_id=owner_id)
     return ok, msg
 
 def _wrap_bot_code(code: str, token: str) -> str:
-    """Inject token and ensure common bot libraries can find it. Also add basic error logging."""
     code = code.strip()
-    # Always inject env-style tokens at the top
     header = (
         f'# -*- coding: utf-8 -*-\n'
         f'import os, sys, traceback\n'
@@ -163,21 +154,18 @@ def _wrap_bot_code(code: str, token: str) -> str:
         f'telegram_token = "{token}"\n'
         f'print("[VROOM] Bot starting with injected token...", flush=True)\n'
     )
-    # If user code already has a token assignment near top, keep it but ensure variables exist
     footer = (
         '\n\n# VROOM safety net – keep process alive on unexpected exit of main\n'
         'if __name__ == "__main__":\n'
         '    try:\n'
-        '        pass  # user code already ran above if it had top-level start\n'
+        '        pass\n'
         '    except Exception:\n'
         '        traceback.print_exc()\n'
         '        sys.stdout.flush()\n'
     )
-    # Prefer running user code as-is after injection so polling/run_polling works
     return header + "\n" + code + "\n"
 
 async def _start_user_bot_once(bot_id: str, code: str, token: str, permanent: bool = False, owner_id: str = ""):
-    """یک‌بار تلاش برای اجرای ربات (بدون ریترای وابستگی)"""
     await install_telegram_deps()
     bot_dir = (BOTS_DIR / bot_id).resolve()
     bot_dir.mkdir(parents=True, exist_ok=True)
@@ -254,11 +242,9 @@ async def _start_user_bot_once(bot_id: str, code: str, token: str, permanent: bo
         return False, str(e)
 
 async def start_user_bot(bot_id: str, code: str, token: str, permanent: bool = False, owner_id: str = ""):
-    """اجرا با ریترای خودکار در صورت ModuleNotFoundError"""
     ok, msg = await _start_user_bot_once(bot_id, code, token, permanent, owner_id=owner_id)
     if ok:
         return ok, msg
-    # اگر ماژول کم بود، نصب کن و یک‌بار دوباره امتحان کن
     if "No module named" in (msg or "") or "ModuleNotFoundError" in (msg or ""):
         mod = extract_missing_module(msg)
         if mod:
@@ -267,7 +253,6 @@ async def start_user_bot(bot_id: str, code: str, token: str, permanent: bool = F
             ok2, msg2 = await _start_user_bot_once(bot_id, code, token, permanent, owner_id=owner_id)
             if ok2:
                 return True, f"✅ بعد از نصب {mod} اجرا شد. {msg2}"
-            # ممکن است چند ماژول کم باشد — یک دور دیگر
             if "No module named" in (msg2 or ""):
                 mod2 = extract_missing_module(msg2)
                 if mod2 and mod2 != mod:
@@ -324,7 +309,6 @@ async def restore_permanent_bots():
             logger.info(f"Restore {bot_id}: {ok} {msg}")
 
 async def create_bot_runner_access(user_id: int = 0, runner_id: str = "", password: str = None, permanent: bool = False) -> tuple:
-    """ساخت لینک + رمز برای دسترسی به صفحه راه‌انداز"""
     access_key = secrets.token_urlsafe(16)
     if not password:
         password = secrets.token_urlsafe(8)
@@ -349,7 +333,6 @@ async def create_bot_runner_access(user_id: int = 0, runner_id: str = "", passwo
 async def validate_bot_runner_access(key: str, password: str = None) -> bool:
     if not key:
         return False
-    # اول از حافظه
     async with BOT_RUNNER_ACCESS_LOCK:
         info = BOT_RUNNER_ACCESS.get(key)
         if info:
@@ -359,7 +342,6 @@ async def validate_bot_runner_access(key: str, password: str = None) -> bool:
                 if password is not None and info["password"] != password:
                     return False
                 return True
-    # بعد از runners.json (حساب‌های دائمی چندکاربره)
     runners = load_runners()
     for rid, r in runners.items():
         if r.get("access_key") == key and r.get("active", True):
@@ -367,7 +349,6 @@ async def validate_bot_runner_access(key: str, password: str = None) -> bool:
                 return False
             if password is not None and r.get("password") != password:
                 return False
-            # در حافظه هم بگذار
             async with BOT_RUNNER_ACCESS_LOCK:
                 BOT_RUNNER_ACCESS[key] = {
                     "expires": None,
@@ -389,14 +370,12 @@ async def get_runner_id_from_key(key: str) -> str:
             return rid
     return ""
 
-# سشن جدا برای پنل کاربر (جدا از ادمین)
-RUNNER_SESSIONS = {}  # token -> {"exp": ts, "runner_id": str}
+RUNNER_SESSIONS = {}
 RUNNER_SESSIONS_LOCK = asyncio.Lock()
 RUNNER_COOKIE = "vroom_runner"
-RUNNER_SESSION_TTL = 60 * 60 * 12  # ۱۲ ساعت — هر بار باید رمز بزند اگر کوکی پاک شود
+RUNNER_SESSION_TTL = 60 * 60 * 12
 
 async def grant_bot_runner_session(key: str) -> str:
-    """سشن جداگانه فقط برای پنل کاربر — به داشبورد ادمین دسترسی نمی‌دهد"""
     t = secrets.token_urlsafe(32)
     runner_id = await get_runner_id_from_key(key)
     async with RUNNER_SESSIONS_LOCK:
@@ -418,7 +397,6 @@ async def is_valid_runner_session(token: str) -> bool:
         return True
 
 def get_session_runner_id(session_token: str) -> str:
-    """از کوکی runner یا (سازگاری قدیمی) از SESSIONS"""
     if not session_token:
         return ""
     info = RUNNER_SESSIONS.get(session_token)
@@ -427,7 +405,6 @@ def get_session_runner_id(session_token: str) -> str:
     return SESSIONS.get(session_token + "_runner") or ""
 
 async def require_runner_or_admin(request: Request):
-    """ادمین داشبورد یا کاربر لینک — پنل‌ها جدا هستند"""
     admin_ok = await is_valid_session(request.cookies.get(SESSION_COOKIE))
     runner_tok = request.cookies.get(RUNNER_COOKIE)
     runner_ok = await is_valid_runner_session(runner_tok)
@@ -436,7 +413,6 @@ async def require_runner_or_admin(request: Request):
     return True
 
 def get_owner_from_request(request: Request) -> str:
-    """اگر کاربر لینک باشد owner_id برمی‌گردد؛ ادمین = خالی (همه را می‌بیند)"""
     runner_tok = request.cookies.get(RUNNER_COOKIE) or ""
     rid = get_session_runner_id(runner_tok)
     if rid:
@@ -452,7 +428,7 @@ async def lifespan(app: FastAPI):
         timeout=httpx.Timeout(180.0, connect=30.0),
         follow_redirects=True
     )
-    logger.info(f"🚀 VROOM v5.8 :{CONFIG['port']}")
+    logger.info(f"🚀 VROOM v5.9 :{CONFIG['port']}")
     await install_telegram_deps()
     asyncio.create_task(restore_permanent_bots())
     asyncio.create_task(keep_alive())
@@ -470,7 +446,6 @@ async def lifespan(app: FastAPI):
             await stop_user_bot(bot_id)
 
 async def monitor_bots_loop():
-    """ربات‌های دائمی که کرش کرده‌اند را دوباره بالا می‌آورد"""
     while True:
         await asyncio.sleep(45)
         try:
@@ -500,7 +475,7 @@ error_logs = deque(maxlen=50)
 hourly_traffic = defaultdict(int)
 http_client = None
 LINKS, LINKS_LOCK = {}, asyncio.Lock()
-CUSTOM_ADDRESSES, CUSTOM_ADDRESSES_LOCK = ["www.speedtest.net"], asyncio.Lock()
+CUSTOM_ADDRESSES, CUSTOM_ADDRESSES_LOCK = ["www.speedtest.net", "www.google.com", "www.cloudflare.com"], asyncio.Lock()
 CUSTOM_DOMAIN, CUSTOM_DOMAIN_LOCK = "", asyncio.Lock()
 TELEGRAM = {"token": os.environ.get("TELEGRAM_BOT_TOKEN", ""), "admin_ids": [], "enabled": False, "offset": 0}
 TELEGRAM_LOCK, TELEGRAM_TASK, TG_STATE = asyncio.Lock(), None, {}
@@ -563,7 +538,18 @@ def get_domain():
 def generate_vless_link(uuid, remark="VROOM", address=None):
     domain = CUSTOM_DOMAIN if CUSTOM_DOMAIN else get_domain()
     addr = address if address else domain
-    params = {"encryption": "none", "security": "tls", "type": "ws", "host": domain, "path": f"/ws/{uuid}", "sni": domain, "fp": "chrome", "alpn": "http/1.1"}
+    # استفاده از SNI اسپیدتست برای عبور از فیلترینگ
+    sni_domain = "www.speedtest.net"
+    params = {
+        "encryption": "none",
+        "security": "tls",
+        "type": "ws",
+        "host": domain,
+        "path": f"/ws/{uuid}",
+        "sni": sni_domain,  # مهمترین تغییر برای دور زدن محدودیت
+        "fp": "chrome",
+        "alpn": "http/1.1"
+    }
     query = "&".join(f"{k}={quote(str(v), safe='')}" for k, v in params.items())
     return f"vless://{uuid}@{addr}:443?{query}#{quote(remark)}"
 
@@ -715,7 +701,7 @@ async def handle_callback(cq):
     if data in ("lang_fa", "lang_en"):
         TG_STATE.setdefault(user_id, {})["lang"] = "fa" if data == "lang_fa" else "en"
         lang = tg_lang(user_id)
-        txt = "🚀 <b>VROOM Bot</b>\nفقط با دکمه‌ها کار کن." if lang == "fa" else "🚀 <b>VROOM Bot</b>\nButtons only."
+        txt = "🚀 <b>VROOM Bot v5.9</b>\nفقط با دکمه‌ها کار کن." if lang == "fa" else "🚀 <b>VROOM Bot v5.9</b>\nButtons only."
         await tg_edit(chat_id, message_id, txt, reply_markup=main_menu_kb(lang))
         return
 
@@ -723,7 +709,7 @@ async def handle_callback(cq):
         for k in list((TG_STATE.get(user_id) or {}).keys()):
             if k != "lang":
                 TG_STATE.get(user_id, {}).pop(k, None)
-        txt = "🚀 <b>VROOM Bot</b>\nفقط با دکمه‌ها." if lang == "fa" else "🚀 <b>VROOM Bot</b>\nButtons only."
+        txt = "🚀 <b>VROOM Bot v5.9</b>\nفقط با دکمه‌ها." if lang == "fa" else "🚀 <b>VROOM Bot v5.9</b>\nButtons only."
         await tg_edit(chat_id, message_id, txt, reply_markup=main_menu_kb(lang))
         return
 
@@ -753,7 +739,6 @@ async def handle_callback(cq):
         await tg_edit(chat_id, message_id, t, reply_markup=ikb([[("🔄", "stats"), (home, "menu")]]))
         return
 
-    # ---------- Custom Bots Menu ----------
     if data == "bots_menu":
         data_bots = load_bots_data()
         runners = load_runners()
@@ -931,7 +916,6 @@ async def handle_callback(cq):
         await tg_edit(chat_id, message_id, "✅ حذف شد", reply_markup=ikb([[("📋", "bots_menu"), (home, "menu")]]))
         return
 
-    # ---------- Original menus ----------
     if data == "list":
         async with LINKS_LOCK:
             items = list(LINKS.items())
@@ -1064,7 +1048,7 @@ async def handle_tg_message(msg):
     lang = tg_lang(user_id)
     if text in ("/start", "start", "منو", "menu"):
         if is_admin:
-            txt = "🚀 <b>VROOM Bot v5.8</b>\nفقط دکمه — لینک ساب + ربات‌های سفارشی." if lang == "fa" else "🚀 <b>VROOM Bot v5.8</b>\nButtons only — sub + custom bots."
+            txt = "🚀 <b>VROOM Bot v5.9</b>\nفقط دکمه — لینک ساب + ربات‌های سفارشی." if lang == "fa" else "🚀 <b>VROOM Bot v5.9</b>\nButtons only — sub + custom bots."
             await tg_send(chat_id, txt, reply_markup=main_menu_kb(lang))
         else:
             await tg_send(chat_id, "⛔ فقط ادمین" if lang == "fa" else "⛔ Admin only")
@@ -1118,7 +1102,7 @@ async def start_telegram_bot():
 # ===================== CORE API =====================
 @app.get("/")
 async def root():
-    return {"service": "VROOM", "version": "5.8", "domain": get_domain()}
+    return {"service": "VROOM", "version": "5.9", "domain": get_domain()}
 
 @app.get("/health")
 async def health():
@@ -1327,7 +1311,6 @@ async def stop_tg(_=Depends(require_auth)):
 # ===================== SECURE BOT RUNNER API (ADMIN ONLY) =====================
 @app.get("/api/user/runner-info")
 async def runner_info(request: Request, _=Depends(require_runner_or_admin)):
-    """اطلاعات حساب و اسلات‌های باقی‌مانده — فقط همان کاربر"""
     owner_id = get_owner_from_request(request)
     data = load_bots_data()
     if not owner_id:
@@ -1426,7 +1409,6 @@ async def list_user_bots(request: Request, _=Depends(require_runner_or_admin)):
     owner_id = get_owner_from_request(request)
     result = []
     for bid, info in data.items():
-        # جداسازی سخت: کاربر فقط پروژه‌های خودش
         if owner_id:
             if info.get("owner_id") != owner_id:
                 continue
@@ -1518,7 +1500,6 @@ async def api_delete_bot(bot_id: str, request: Request, _=Depends(require_runner
 
 @app.post("/api/bot-runner/auth")
 async def bot_runner_auth(request: Request):
-    """تأیید رمز — فقط کوکی کاربر (جدا از ادمین). رمز اشتباه = ورود ممنوع"""
     body = await request.json()
     key = (body.get("key") or "").strip()
     password = (body.get("password") or "").strip()
@@ -1528,18 +1509,16 @@ async def bot_runner_auth(request: Request):
         raise HTTPException(401, "رمز اشتباه یا لینک منقضی شده")
     session_token = await grant_bot_runner_session(key)
     resp = JSONResponse({"ok": True, "runner_id": await get_runner_id_from_key(key)})
-    # فقط کوکی runner — نه کوکی ادمین
     resp.set_cookie(RUNNER_COOKIE, session_token, max_age=RUNNER_SESSION_TTL, httponly=True, samesite="lax", path="/")
     return resp
 
 @app.get("/api/bot-runner/me")
 async def bot_runner_me(request: Request):
-    """آیا کاربر لینک لاگین است؟ (جدا از ادمین)"""
     tok = request.cookies.get(RUNNER_COOKIE)
     ok = await is_valid_runner_session(tok)
     return {"authenticated": ok, "runner_id": get_session_runner_id(tok) if ok else ""}
 
-# ===================== MULTI-USER RUNNER ACCOUNTS (مثل اینباند) =====================
+# ===================== MULTI-USER RUNNER ACCOUNTS =====================
 @app.get("/api/runners")
 async def list_runners(_=Depends(require_auth)):
     runners = load_runners()
@@ -1590,7 +1569,6 @@ async def create_runner(request: Request, _=Depends(require_auth)):
         "created_at": datetime.now().isoformat(),
     }
     save_runners(runners)
-    # در حافظه هم ثبت
     async with BOT_RUNNER_ACCESS_LOCK:
         BOT_RUNNER_ACCESS[access_key] = {
             "expires": None,
@@ -1642,7 +1620,6 @@ async def delete_runner(rid: str, _=Depends(require_auth)):
     if r and r.get("access_key"):
         async with BOT_RUNNER_ACCESS_LOCK:
             BOT_RUNNER_ACCESS.pop(r["access_key"], None)
-    # ربات‌های این کاربر را هم خاموش کن
     data = load_bots_data()
     for bid, info in list(data.items()):
         if info.get("owner_id") == rid:
@@ -1685,7 +1662,7 @@ async def subscription_raw(uid: str, request: Request):
         return Response(content=_b64.b64encode(raw.encode()).decode(), media_type="text/plain; charset=utf-8", headers=headers)
     return Response(content=raw, media_type="text/plain; charset=utf-8", headers=headers)
 
-# ===================== PAGE (original) =====================
+# ===================== PAGE =====================
 @app.get("/page/{uid}")
 async def subscription_page(uid: str):
     async with LINKS_LOCK:
@@ -1805,7 +1782,7 @@ setL(L);sp(document.querySelector(".pb2"));
 </body></html>"""
     return HTMLResponse(content=html)
 
-# ===================== SECURE BOT-RUNNER PAGE (ADMIN ONLY) =====================
+# ===================== SECURE BOT-RUNNER PAGE =====================
 BOT_RUNNER_HTML = r"""<!DOCTYPE html>
 <html dir="rtl" lang="fa">
 <head>
@@ -1940,13 +1917,11 @@ async function enterMain(){
 }
 
 async function checkAuth(){
-  // هر بار با لینک → حتماً رمز بپرس (پنل کاربر جدا از ادمین)
   if(accessKey){
     gateBox.style.display='block';
     mainBox.style.display='none';
     return;
   }
-  // بدون key فقط ادمین داشبورد
   try{
     const r=await fetch('/api/me',{credentials:'include'});
     const d=await r.json();
@@ -2008,7 +1983,6 @@ async function refreshAll(){
           <div class="logs-box" style="margin-top:8px"><pre id="log-${b.id}">${(b.logs||'لاگی نیست').replace(/</g,'&lt;')}</pre></div>
         </div>`).join('');
     }
-    // اگر اسلات پر است فرم را کم‌رنگ کن
     const form=document.getElementById('mainForm');
     if(rem===0){form.style.opacity='0.55';document.getElementById('submitBtn').disabled=true;document.getElementById('submitBtn').textContent='سقف پروژه پر است — یکی را حذف کنید'}
     else{form.style.opacity='1';document.getElementById('submitBtn').disabled=false;document.getElementById('submitBtn').textContent='🚀 اجرای پروژه جدید'}
@@ -2084,15 +2058,13 @@ btn.disabled=false;btn.textContent='🚀 اجرای پروژه جدید';
 @app.get("/bot-runner", response_class=HTMLResponse)
 async def bot_runner_page(request: Request):
     key = request.query_params.get("key")
-    # لینک کاربر: فقط با key معتبر — همیشه صفحه رمز نشان داده می‌شود
     if key and await validate_bot_runner_access(key):
         return HTMLResponse(BOT_RUNNER_HTML)
-    # بدون key: فقط ادمین داشبورد
     if await is_valid_session(request.cookies.get(SESSION_COOKIE)):
         return HTMLResponse(BOT_RUNNER_HTML)
     return RedirectResponse("/login")
 
-# ===================== LOGIN + DASHBOARD (original style) =====================
+# ===================== LOGIN + DASHBOARD =====================
 LOGIN_HTML = """<!DOCTYPE html><html lang="fa" dir="rtl" data-theme="light"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VROOM</title>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@700;900&family=Inter:wght@800&display=swap" rel="stylesheet">
 <style>
@@ -2343,7 +2315,7 @@ async def dashboard_page(request: Request):
     return HTMLResponse(DASHBOARD_HTML)
 
 # ===================== WS =====================
-RELAY_BUF = 2 * 1024 * 1024
+RELAY_BUF = 4 * 1024 * 1024  # افزایش بافر برای سرعت بیشتر
 
 async def parse_vless_header(first_chunk: bytes):
     if len(first_chunk) < 24:
@@ -2439,7 +2411,7 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
         if max_conn > 0 and client_ip not in link_ip_map.get(uuid, set()) and count_connections_for_link(uuid) >= max_conn:
             await websocket.close(code=1008, reason="limit")
             return
-        first_msg = await asyncio.wait_for(websocket.receive(), timeout=10)
+        first_msg = await asyncio.wait_for(websocket.receive(), timeout=15)
         if first_msg["type"] == "websocket.disconnect":
             return
         first_chunk = first_msg.get("bytes") or (first_msg.get("text") or "").encode()
@@ -2452,7 +2424,7 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
         link_ip_map[uuid].add(client_ip)
         await add_usage(uuid, len(first_chunk), "up")
         connections[conn_id]["bytes"] += len(first_chunk)
-        reader, writer = await asyncio.wait_for(asyncio.open_connection(address, port), timeout=5)
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(address, port), timeout=10)
         if payload:
             await add_usage(uuid, len(payload), "up")
             writer.write(payload)
